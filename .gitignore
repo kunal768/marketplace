@@ -1,3 +1,10 @@
+.DS_Store
+**/.DS_Store
+*.log
+**/bin/
+**/dist/
+**/node_modules/
+**/.env
 # Environment variables
 .env
 *.env

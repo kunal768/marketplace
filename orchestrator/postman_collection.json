@@ -1,0 +1,89 @@
+{
+  "info": {
+    "name": "Orchestrator User APIs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "f2a3e7d2-0c8d-4d7f-a6c1-3aa5f8b1d001"
+  },
+  "item": [
+    {
+      "name": "Signup",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/users/signup",
+          "host": ["{{base_url}}"],
+          "path": ["api", "users", "signup"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_name\": \"John Doe\",\n  \"email\": \"john.doe@sjsu.edu\",\n  \"password\": \"secret123\",\n  \"phone\": \"+1-555-0100\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/users/login",
+          "host": ["{{base_url}}"],
+          "path": ["api", "users", "login"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"john.doe@sjsu.edu\",\n  \"password\": \"secret123\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Refresh Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/users/refresh",
+          "host": ["{{base_url}}"],
+          "path": ["api", "users", "refresh"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Profile",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/users/profile",
+          "host": ["{{base_url}}"],
+          "path": ["api", "users", "profile"]
+        }
+      },
+      "response": []
+    }
+  ],
+  "event": [],
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8080" },
+    { "key": "access_token", "value": "" },
+    { "key": "refresh_token", "value": "" }
+  ]
+}
+
+
