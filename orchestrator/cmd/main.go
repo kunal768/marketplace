@@ -14,7 +14,7 @@ import (
 func main() {
 	// Load environment variables from .env if present (current dir, then parent)
 	if err := godotenv.Load(); err != nil {
-		_ = godotenv.Load("../.env")
+		log.Fatal("Failed to load environment variables:", err)
 	}
 
 	// Database connection via clients/db

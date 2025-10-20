@@ -41,6 +41,16 @@ type RefreshTokenResponse struct {
 	User         models.User `json:"user"`
 }
 
+// Events Verification Request/Response
+type EventsVerifyRequest struct {
+	UserID string `json:"userId" validate:"required"`
+}
+
+type EventsVerifyResponse struct {
+	Message string `json:"message"`
+	Valid   bool   `json:"valid"`
+}
+
 // Error Response
 type ErrorResponse struct {
 	Error   string `json:"error"`

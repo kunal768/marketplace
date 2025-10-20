@@ -160,6 +160,66 @@ func (e *Endpoints) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) 
 	httplib.WriteJSON(w, http.StatusOK, response)
 }
 
+// EventsVerifyHandler handles WebSocket events verification
+func (e *Endpoints) EventsVerifyHandler(w http.ResponseWriter, r *http.Request) {
+	var req EventsVerifyRequest
+
+	// Decode request body
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request body",
+			Message: "Failed to decode request body",
+		})
+		return
+	}
+
+	// Validate request
+	if req.UserID == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Validation error",
+			Message: "User ID is required",
+		})
+		return
+	}
+
+	// Get user ID from JWT token context (set by AuthMiddleware)
+	tokenUserID, ok := r.Context().Value(httplib.ContextKey("userId")).(string)
+	if !ok {
+		httplib.WriteJSON(w, http.StatusUnauthorized, ErrorResponse{
+			Error:   "Unauthorized",
+			Message: "User ID not found in token",
+		})
+		return
+	}
+
+	// Verify that the token's user ID matches the requested user ID
+	if tokenUserID != req.UserID {
+		httplib.WriteJSON(w, http.StatusForbidden, ErrorResponse{
+			Error:   "Forbidden",
+			Message: "Token user ID does not match requested user ID",
+		})
+		return
+	}
+
+	// Verify user exists in database
+	_, err := e.service.GetUserByID(r.Context(), req.UserID)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusNotFound, ErrorResponse{
+			Error:   "User not found",
+			Message: "User does not exist",
+		})
+		return
+	}
+
+	// Return success response
+	response := EventsVerifyResponse{
+		Message: "User verified successfully",
+		Valid:   true,
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, response)
+}
+
 // RegisterRoutes registers all user routes with proper middleware
 func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 	// Default protected chain: JSON -> Auth -> Role
@@ -178,6 +238,9 @@ func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 
 	// All other routes require auth + role injection by default
 	mux.Handle("GET /api/users/profile", protected(http.HandlerFunc(e.GetUserHandler)))
+
+	// Events verification endpoint (requires auth but not role injection)
+	mux.Handle("POST /api/events/verify", httplib.AuthMiddleWare(httplib.JSONRequestDecoder(http.HandlerFunc(e.EventsVerifyHandler))))
 }
 
 // validateSignupRequest validates signup request
