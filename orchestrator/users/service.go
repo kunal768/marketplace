@@ -2,17 +2,23 @@ package users
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	httplib "github.com/kunal768/cmpe202/http-lib"
+	"github.com/kunal768/cmpe202/orchestrator/internal/queue"
 	"github.com/kunal768/cmpe202/orchestrator/models"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type svc struct {
-	repo Repository
+	repo        Repository
+	mongoClient *mongo.Client
+	publisher   queue.Publisher
 }
 
 type Service interface {
@@ -20,11 +26,19 @@ type Service interface {
 	Login(ctx context.Context, req LoginRequest) (*LoginResponse, error)
 	RefreshToken(ctx context.Context, req RefreshTokenRequest) (*RefreshTokenResponse, error)
 	GetUserByID(ctx context.Context, userID string) (*models.User, error)
+	// FetchUndeliveredMessages returns undelivered messages for recipient (optional - requires mongo client)
+	FetchUndeliveredMessages(ctx context.Context, recipientID string) ([]map[string]interface{}, error)
 }
 
-func NewService(repo Repository) Service {
+func NewService(repo Repository, publisher queue.Publisher, mongoClient ...*mongo.Client) Service {
+	var mc *mongo.Client
+	if len(mongoClient) > 0 {
+		mc = mongoClient[0]
+	}
 	return &svc{
-		repo: repo,
+		repo:        repo,
+		mongoClient: mc,
+		publisher:   publisher,
 	}
 }
 
@@ -216,6 +230,46 @@ func (s *svc) GetUserByID(ctx context.Context, userID string) (*models.User, err
 	}
 
 	return user, nil
+}
+
+// FetchUndeliveredMessages returns undelivered messages for a recipient using mongo client if available
+func (s *svc) FetchUndeliveredMessages(ctx context.Context, recipientID string) ([]map[string]interface{}, error) {
+	if s.mongoClient == nil {
+		return nil, fmt.Errorf("mongo client not configured")
+	}
+	coll := s.mongoClient.Database("chatdb").Collection("chatmessages")
+	filter := bson.M{"recipientId": recipientID, "status": "UNDELIVERED"}
+	cur, err := coll.Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	var results []map[string]interface{}
+	for cur.Next(ctx) {
+		var doc map[string]interface{}
+		if err := cur.Decode(&doc); err != nil {
+			continue
+		}
+		results = append(results, doc)
+	}
+
+	// Best-effort: republish undelivered messages to the queue if publisher is configured
+	if s.publisher != nil && len(results) > 0 {
+		for _, m := range results {
+			b, err := json.Marshal(m)
+			if err != nil {
+				// skip malformed document
+				continue
+			}
+			// publish with context but do not fail the whole operation if publish fails
+			if err := s.publisher.Publish(ctx, b); err != nil {
+				// Log publish failure using fmt for minimal dependencies
+				fmt.Printf("failed to publish undelivered message for recipient %s: %v\n", recipientID, err)
+			}
+		}
+	}
+
+	return results, nil
 }
 
 // generateUserID generates a unique user ID

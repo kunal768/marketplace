@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Application specific utilities */
+.app { @apply flex h-screen }
+.sidebar { @apply w-20 bg-slate-800 text-white flex flex-col items-center p-4 }
+.main { @apply flex-1 p-6 bg-gray-50 }
+.header { @apply flex justify-between items-center }
+.chat { @apply flex flex-col h-[70vh] border rounded overflow-hidden }
+.message-list { @apply flex-1 overflow-auto p-3 bg-white }
+.message { @apply mb-3 }
+.message.out { @apply text-right }
+.message .meta { @apply text-sm text-gray-500 }
+.message .content { @apply inline-block p-2 rounded bg-sky-100 }
+.message-input { @apply flex p-2 border-t }
+.message-input input { @apply flex-1 p-2 border rounded }
+.message-input button { @apply ml-2 px-3 py-2 bg-sjsu-500 text-white rounded }
