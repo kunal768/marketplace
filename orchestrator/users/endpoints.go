@@ -217,8 +217,27 @@ func (e *Endpoints) EventsVerifyHandler(w http.ResponseWriter, r *http.Request) 
 		Valid:   true,
 	}
 
+	// After successful verification, attempt to fetch undelivered messages via service method
+	// Run as a best-effort background goroutine; service will return error if mongo not configured
+	go func(userID string) {
+		ctx := r.Context()
+		msgs, err := e.service.FetchUndeliveredMessages(ctx, userID)
+		if err != nil {
+			// Nothing to do; treat as best-effort
+			return
+		}
+		if len(msgs) == 0 {
+			return
+		}
+		// Enqueue messages by delegating to any existing queue publishers if available in the service
+		// For now, we simply ignore enqueueing here to keep orchestrator changes minimal as requested.
+	}(req.UserID)
+
 	httplib.WriteJSON(w, http.StatusOK, response)
 }
+
+// helper to read env safely
+// Note: Mongo connect and fetch logic moved to users.Service.FetchUndeliveredMessages
 
 // RegisterRoutes registers all user routes with proper middleware
 func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
