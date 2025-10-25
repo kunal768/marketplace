@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"os"
 
@@ -28,7 +29,9 @@ func main() {
 
 	r.Mount("/listings", listing.Routes(handlers))
 
-	addr := ":" + getenv("PORT", "8083")
+	log.Println("listening on", getenv("PORT", "8080"))
+
+	addr := ":" + getenv("PORT", "8080")
 	srv := &http.Server{
 		Addr:    addr,
 		Handler: r,
