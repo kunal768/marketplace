@@ -25,12 +25,25 @@ services:
       - ./.env
       - ./listing-service/.env
     ports:
-      - "8080:8080"
+      - "${LISTING_PORT}:${LISTING_PORT}"
     environment:
       DB_HOST: db
     depends_on:
       db:
         condition: service_healthy
-        
+
+  search-agent:
+    build: ./search-agent
+    container_name: search-agent
+    env_file:
+      - ./.env
+      - ./search-agent/.env
+    ports:
+      - "${SEARCHAGENT_PORT}:${SEARCHAGENT_PORT}"
+    environment:
+      DB_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy      
 volumes:
   pgdata:

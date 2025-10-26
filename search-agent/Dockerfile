@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build the Go binary (static, smaller)
-RUN CGO_ENABLED=0 GOOS=linux go build -o listing-service ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -o search-agent ./cmd/api
 
 # ---------- Stage 2: Run ----------
 FROM alpine:latest
@@ -23,10 +23,10 @@ FROM alpine:latest
 WORKDIR /app
 
 # Copy the compiled binary from the builder stage
-COPY --from=builder /app/listing-service .
+COPY --from=builder /app/search-agent .
 
 # Expose the service port
-EXPOSE 8080
+EXPOSE 3004
 
 # Run the binary
-CMD ["./listing-service"]
+CMD ["./search-agent"]

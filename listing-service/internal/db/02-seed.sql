@@ -10,7 +10,7 @@ WITH params AS (SELECT 2000 AS n)
   SELECT ARRAY['vintage','compact','sleek','premium','budget'] AS adj,
          ARRAY['keyboard','router','lamp','bottle','backpack'] AS noun,
          ARRAY['Like new','Gently used','Well-loved','Good condition'] AS cond,
-         ARRAY['TEXTBOOK','GADGET','ESSENTIAL','NON-ESSENTIAL','OTHER']::listing_category[] AS cats,
+         ARRAY['textbooks', 'gadgets', 'essentials', 'other']::listing_category[] AS cats,
          ARRAY['AVAILABLE','PENDING','SOLD','ARCHIVED']::listing_status[] AS stats
 )
 INSERT INTO listings (title, description, price, category, user_id, status, created_at)
