@@ -1,0 +1,257 @@
+{
+	"info": {
+		"_postman_id": "9c9d2388-318f-4a46-8070-aeceda7d0b1b",
+		"name": "Listings",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "49158031",
+		"_collection_link": "https://dan-lam-1998956.postman.co/workspace/Dan-Lam's-Workspace~6f289f2b-2161-4a8b-8e8f-752a891f06fb/collection/49158031-9c9d2388-318f-4a46-8070-aeceda7d0b1b?action=share&source=collection_link&creator=49158031"
+	},
+	"item": [
+		{
+			"name": "listings",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{listingURL}}/",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						""
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "listings filter",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{listingURL}}?limit=99&status=SOLD&keywords=compact&category=other&offset=0",
+					"host": [
+						"{{listingURL}}"
+					],
+					"query": [
+						{
+							"key": "limit",
+							"value": "99"
+						},
+						{
+							"key": "status",
+							"value": "SOLD"
+						},
+						{
+							"key": "keywords",
+							"value": "compact"
+						},
+						{
+							"key": "category",
+							"value": "other"
+						},
+						{
+							"key": "offset",
+							"value": "0"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "create listing",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "X-User-ID",
+						"value": "123",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"title\": \"test Vintage Chair\",\n  \"price\": 150,\n  \"category\": \"other\",\n  \"description\": \"test Solid oak, lightly used, perfect for dining rooms.\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{listingURL}}/",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						""
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "get createdlisting",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{listingURL}}/2001",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						"2001"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "update createdlisting",
+			"request": {
+				"method": "PATCH",
+				"header": [
+					{
+						"key": "X-User-ID",
+						"value": "123",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"title\": \"painful change of thingy\",\n    \"status\": \"ARCHIVED\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{listingURL}}/2001",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						"2001"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "revert update",
+			"request": {
+				"method": "PATCH",
+				"header": [
+					{
+						"key": "X-User-ID",
+						"value": "123",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"title\": \"test Vintage Chair\"\n}"
+				},
+				"url": {
+					"raw": "{{listingURL}}/2001",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						"2001"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Delete createdlisting",
+			"request": {
+				"method": "DELETE",
+				"header": [
+					{
+						"key": "X-User-ID",
+						"value": "123",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{listingURL}}/2001?hard=true",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						"2001"
+					],
+					"query": [
+						{
+							"key": "hard",
+							"value": "true"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "chatsearch",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"query\":\"Any routers?\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{listingURL}}/chatsearch",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						"chatsearch"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "listingURL",
+			"value": ""
+		}
+	]
+}
