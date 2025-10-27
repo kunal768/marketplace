@@ -16,3 +16,9 @@ Dan
 Link to your team's Project Journal (on GitHub)
 
 Link to your team's Google Sheet or Project Board - showing Product Backlog and Sprint Backlog for each Sprint
+
+Steps to get the listing-service build running
+1. Find the two .env.example files inside the main project folder and also inside the listing-service folder. Create a .env matching those variables.
+2. In a terminal at the main project directory. Run in the terminal:
+make up
+3. If everything went well then you can import the postman.json in listin-service to see how to interact with it. Do note that the baseurl uses localhost:8081 and you need to define the port yourself in the global .env
