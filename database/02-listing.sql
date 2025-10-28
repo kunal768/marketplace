@@ -7,16 +7,23 @@ DO $$ BEGIN
   CREATE TYPE LISTING_STATUS AS ENUM ('AVAILABLE','PENDING','SOLD','ARCHIVED', 'REPORTED');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
--- 2) Table
+-- 2) Table for listings. Requires the users table to link the userid to
 CREATE TABLE IF NOT EXISTS listings (
   id SERIAL PRIMARY KEY,
   title VARCHAR(255) NOT NULL,
   description TEXT,
   price INTEGER NOT NULL,          -- smallest unit (e.g., cents)
   category LISTING_CATEGORY NOT NULL,
-  user_id INTEGER NOT NULL,
+
+  -- user_id link to the users table
+  user_id UUID NOT NULL,
+  CONSTRAINT fk_user FOREIGN KEY (user_id)
+      REFERENCES users(user_id)
+      ON DELETE CASCADE,
+
   status LISTING_STATUS DEFAULT 'AVAILABLE',
-  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- 3) Helpful indexes

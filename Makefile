@@ -6,6 +6,9 @@ up:
 down:
 	docker compose down -v
 
+psql:
+	docker exec -it db psql -U postgres -d app
+
 log-or:
 	docker compose logs -f orchestrator
 

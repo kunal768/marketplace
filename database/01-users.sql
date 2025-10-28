@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS users (
     email      TEXT        NOT NULL,
     role       INTEGER     NOT NULL,
     contact    JSONB       NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, email),
     UNIQUE (user_id),
     UNIQUE (email)
@@ -20,8 +20,8 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS user_auth (
     user_id    UUID        PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
     password   TEXT        NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Store latest access/refresh tokens per user
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS user_login_auth (
     access_token  TEXT        NOT NULL,
     refresh_token TEXT        NOT NULL UNIQUE,
     expires_at    TIMESTAMPTZ NOT NULL,
-    created_at    TIMESTAMPTZ NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL
 );
 
