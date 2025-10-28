@@ -8,7 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/joho/godotenv v1.5.1
-	github.com/kunal768/cmpe202/http-lib v0.0.0-00010101000000-000000000000
+	github.com/kunal768/cmpe202/http-lib v0.0.0
 	github.com/rabbitmq/amqp091-go v1.10.0
 	go.mongodb.org/mongo-driver v1.14.0
 	golang.org/x/crypto v0.37.0

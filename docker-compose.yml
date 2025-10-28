@@ -13,6 +13,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./listing-service/internal/db:/docker-entrypoint-initdb.d:ro
+      - ./orchestrator:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 3s
@@ -32,6 +33,21 @@ services:
     depends_on:
       db:
         condition: service_healthy
-     
+
+  orchestrator:
+    build: 
+      context: .
+      dockerfile: ./orchestrator/Dockerfile
+    container_name: orchestrator
+    env_file:
+      - ./.env
+      - ./orchestrator/.env
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy     
 volumes:
   pgdata:

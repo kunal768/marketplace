@@ -6,8 +6,8 @@ up:
 down:
 	docker compose down -v
 
-log-sa:
-	docker compose logs -f search-agent
+log-or:
+	docer compose logs -f orchestrator
 
 log-ls:
 	docker compose logs -f listing-service
