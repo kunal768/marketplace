@@ -7,7 +7,7 @@ down:
 	docker compose down -v
 
 log-or:
-	docer compose logs -f orchestrator
+	docker compose logs -f orchestrator
 
 log-ls:
 	docker compose logs -f listing-service

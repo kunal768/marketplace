@@ -26,6 +26,7 @@ func main() {
 	if dbURL == "" {
 		log.Fatal("DATABASE_URL is not set")
 	}
+	log.Println("Connecting to: ", dbURL)
 	dbsvc := dbclient.NewDBService(dbURL)
 	dbPool, err := dbsvc.Connect()
 	if err != nil {
