@@ -18,7 +18,7 @@ type Handlers struct {
 	S  *Store
 }
 
-func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) CreateHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := platform.UserIDFromHeader(r)
 	if !ok {
 		platform.Error(w, http.StatusUnauthorized, "missing user")
@@ -43,7 +43,7 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 	platform.JSON(w, http.StatusCreated, l)
 }
 
-func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) GetHandler(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	l, err := h.S.Get(r.Context(), id)
 	if err != nil {
@@ -53,7 +53,7 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 	platform.JSON(w, http.StatusOK, l)
 }
 
-func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) ListHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	f := models.ListFilters{
 		Limit:  parseInt(q.Get("limit"), 20),
@@ -88,7 +88,7 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	platform.JSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)})
 }
 
-func (h *Handlers) Update(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := platform.UserIDFromHeader(r)
 	if !ok {
 		platform.Error(w, http.StatusUnauthorized, "missing user")
@@ -109,7 +109,7 @@ func (h *Handlers) Update(w http.ResponseWriter, r *http.Request) {
 	platform.JSON(w, http.StatusOK, l)
 }
 
-func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) DeleteHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := platform.UserIDFromHeader(r)
 	if !ok {
 		platform.Error(w, http.StatusUnauthorized, "missing user")
@@ -132,7 +132,7 @@ func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request) {
 	platform.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *Handlers) ChatSearch(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) ChatSearchHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Query string `json:"query"`
 	}

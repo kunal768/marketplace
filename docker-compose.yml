@@ -12,13 +12,39 @@ services:
       - "${DB_PORT}:${DB_PORT}"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./database:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 3s
       timeout: 3s
       retries: 20
   
+  db-seeder:
+    image: postgres:16
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./database:/seed
+    environment:
+      DB_NAME: app
+      DB_HOST: db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    command: >
+      bash -lc "
+        echo 'Waiting for Postgres: ';
+        echo $${DB_NAME};
+        until pg_isready -h $${DB_HOST} -U $${DB_USER} -d $${DB_NAME}; do sleep 1; done;
+        export PGPASSWORD=\"$${DB_PASSWORD}\";
+        echo 'Running SQL seed files...';
+        for f in ./seed/*.sql; do
+          echo 'Executing' $$f;
+          psql -h $${DB_HOST} -U $${DB_USER} -d $${DB_NAME} -v ON_ERROR_STOP=1 -1 -f \"$$f\";
+        done;
+        echo 'All seed files executed successfully.';
+      "
+
+
   listing-service:
     build: ./listing-service
     container_name: listing-service
@@ -28,8 +54,8 @@ services:
     ports:
       - "${LISTING_PORT}:${LISTING_PORT}"
     depends_on:
-      db:
-        condition: service_healthy
+      db-seeder:
+        condition: service_completed_successfully
 
   orchestrator:
     build: 
@@ -44,7 +70,7 @@ services:
     environment:
       DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable
     depends_on:
-      db:
-        condition: service_healthy     
+      db-seeder:
+        condition: service_completed_successfully  
 volumes:
   pgdata:
