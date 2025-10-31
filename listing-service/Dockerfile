@@ -1,32 +1,24 @@
 # ---------- Stage 1: Build ----------
-FROM golang:1.25.3 AS builder
-
-# Set working directory inside the container
+FROM golang:1.23 AS builder
 WORKDIR /app
 
-# Copy go.mod and go.sum first (to cache deps)
-COPY go.mod go.sum ./
+# Copy minimal files first for caching
+COPY go.work ./
+COPY http-lib/go.mod http-lib/go.mod
+COPY listing-service/go.mod listing-service/go.mod
+COPY orchestrator/go.mod orchestrator/go.mod 
+RUN go work sync && cd listing-service && go mod download
 
-# Download dependencies
-RUN go mod download
+# Copy source code
+COPY http-lib/ http-lib/
+COPY listing-service/ listing-service/
 
-# Copy the rest of the code
-COPY . .
+# Build from cmd/api
+ENV CGO_ENABLED=0
+RUN mkdir -p /out && go build -o /out/listing-service ./listing-service/cmd/api
 
-# Build the Go binary (static, smaller)
-RUN CGO_ENABLED=0 GOOS=linux go build -o listing-service ./cmd/api
-
-# ---------- Stage 2: Run ----------
-FROM alpine:latest
-
-# Create working directory
-WORKDIR /app
-
-# Copy the compiled binary from the builder stage
-COPY --from=builder /app/listing-service .
-
-# Expose the service port
+# ---------- Stage 2: Runtime ----------
+FROM gcr.io/distroless/static-debian12
+COPY --from=builder /out/listing-service /bin/listing-service
 EXPOSE 8080
-
-# Run the binary
-CMD ["./listing-service"]
+ENTRYPOINT ["/bin/listing-service"]

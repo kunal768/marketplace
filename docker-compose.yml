@@ -43,7 +43,9 @@ services:
 
 
   listing-service:
-    build: ./listing-service
+    build: 
+      context: .
+      dockerfile: ./listing-service/Dockerfile
     container_name: listing-service
     env_file:
       - ./.env
@@ -63,7 +65,7 @@ services:
       - ./.env
       - ./orchestrator/.env
     ports:
-      - "8080:8080"
+      - "${ORCHESTRATOR_PORT}:${ORCHESTRATOR_PORT}"
     environment:
       DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable
     depends_on:

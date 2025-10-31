@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	httplib "github.com/kunal768/cmpe202/http-lib"
 	"github.com/your-org/listing-service/internal/gemini"
 	"github.com/your-org/listing-service/internal/models"
 	"github.com/your-org/listing-service/internal/platform"
@@ -19,11 +20,21 @@ type Handlers struct {
 }
 
 func (h *Handlers) CreateHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := platform.UserIDFromHeader(r)
+	// User Auth
+	// Get user ID from context (set by AuthMiddleware)
+	userTokenID, ok := r.Context().Value(httplib.ContextKey("userId")).(string)
 	if !ok {
-		platform.Error(w, http.StatusUnauthorized, "missing user")
+		platform.Error(w, http.StatusNotFound, "UpdateHandler: user not listed")
 		return
 	}
+
+	userRole, _ := r.Context().Value(httplib.ContextKey("userRole")).(int)
+
+	if userRole == 1 {
+		log.Println("user is indeed an admin! Not gonna do anything about it yet.")
+	}
+
+	//End user auth
 
 	var p models.CreateParams
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
@@ -35,7 +46,7 @@ func (h *Handlers) CreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	l, err := h.S.Create(r.Context(), userID, p)
+	l, err := h.S.Create(r.Context(), userTokenID, p)
 	if err != nil {
 		platform.Error(w, http.StatusInternalServerError, err.Error())
 		return
@@ -89,11 +100,21 @@ func (h *Handlers) ListHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) UpdateHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := platform.UserIDFromHeader(r)
+	// User Auth
+	// Get user ID from context (set by AuthMiddleware)
+	userTokenID, ok := r.Context().Value(httplib.ContextKey("userId")).(string)
 	if !ok {
-		platform.Error(w, http.StatusUnauthorized, "missing user")
+		platform.Error(w, http.StatusNotFound, "UpdateHandler: user not listed")
 		return
 	}
+
+	userRole, _ := r.Context().Value(httplib.ContextKey("userRole")).(int)
+
+	if userRole == 1 {
+		log.Println("user is indeed an admin! Not gonna do anything about it yet.")
+	}
+	log.Println("Auth finished for updatehandler: ", userTokenID)
+	//End user auth
 
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	var p models.UpdateParams
@@ -101,30 +122,43 @@ func (h *Handlers) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 		platform.Error(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	l, err := h.S.Update(r.Context(), id, userID, p)
+
+	log.Println("SQL update try from updatehandler")
+	l, err := h.S.Update(r.Context(), id, userTokenID, p)
 	if err != nil {
 		platform.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	log.Println("SQL update passed from updatehandler")
 	platform.JSON(w, http.StatusOK, l)
 }
 
 func (h *Handlers) DeleteHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := platform.UserIDFromHeader(r)
+	// User Auth
+	// Get user ID from context (set by AuthMiddleware)
+	userTokenID, ok := r.Context().Value(httplib.ContextKey("userId")).(string)
 	if !ok {
-		platform.Error(w, http.StatusUnauthorized, "missing user")
+		platform.Error(w, http.StatusNotFound, "UpdateHandler: user not listed")
 		return
 	}
 
+	userRole, _ := r.Context().Value(httplib.ContextKey("userRole")).(int)
+
+	if userRole == 1 {
+		log.Println("user is indeed an admin! Not gonna do anything about it yet.")
+	}
+
+	//End user auth
+
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if r.URL.Query().Get("hard") == "true" {
-		if err := h.S.Delete(r.Context(), id, userID); err != nil {
+		if err := h.S.Delete(r.Context(), id, userTokenID); err != nil {
 			platform.Error(w, 500, err.Error())
 			log.Println("Big pooopie delete")
 			return
 		}
 	} else {
-		if err := h.S.Archive(r.Context(), id, userID); err != nil {
+		if err := h.S.Archive(r.Context(), id, userTokenID); err != nil {
 			platform.Error(w, 500, err.Error())
 			return
 		}
@@ -167,6 +201,16 @@ func (h *Handlers) ChatSearchHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(listings)
+}
+
+func (h *Handlers) GetUserListsHandler(w http.ResponseWriter, r *http.Request) {
+	user_id := chi.URLParam(r, "user_id")
+	l, err := h.S.GetUserLists(r.Context(), user_id)
+	if err != nil {
+		platform.Error(w, http.StatusNotFound, "not found")
+		return
+	}
+	platform.JSON(w, http.StatusOK, l)
 }
 
 func parseInt(s string, def int) int {
