@@ -1,0 +1,500 @@
+{
+	"info": {
+		"_postman_id": "9c9d2388-318f-4a46-8070-aeceda7d0b1b",
+		"name": "Listings",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "49158031",
+		"_collection_link": "https://dan-lam-1998956.postman.co/workspace/Dan-Lam's-Workspace~6f289f2b-2161-4a8b-8e8f-752a891f06fb/collection/49158031-9c9d2388-318f-4a46-8070-aeceda7d0b1b?action=share&source=collection_link&creator=49158031"
+	},
+	"item": [
+		{
+			"name": "listings",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{listingURL}}",
+					"host": [
+						"{{listingURL}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "listings filter",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{listingURL}}?limit=99",
+					"host": [
+						"{{listingURL}}"
+					],
+					"query": [
+						{
+							"key": "limit",
+							"value": "99"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Signup john doe",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"user_name\": \"John Doe\",\n  \"email\": \"john.doe@sjsu.edu\",\n  \"password\": \"secret123\",\n  \"phone\": \"+1-555-0100\"\n}"
+				},
+				"url": {
+					"raw": "{{orchestratorURL}}/api/users/signup",
+					"host": [
+						"{{orchestratorURL}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"signup"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Login john doe",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let res;",
+							"try {",
+							"    res = pm.response.json();",
+							"} catch (e) {",
+							"    console.error(\"Response is not valid JSON:\", e);",
+							"    res = {};",
+							"}",
+							"let token = res.token",
+							"if (!token) {",
+							"    console.error(\"⚠️ Could not find token in response. Response keys:\", Object.keys(res));",
+							"} else {",
+							"    // Store it as a collection variable (so it persists for all requests)",
+							"    pm.collectionVariables.set(\"authtoken\", token);",
+							"    console.log(\"✅ Stored token:\", token);",
+							"}",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"email\": \"john.doe@sjsu.edu\",\n  \"password\": \"secret123\"\n}"
+				},
+				"url": {
+					"raw": "{{orchestratorURL}}/api/users/login",
+					"host": [
+						"{{orchestratorURL}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Login user1",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let res;",
+							"try {",
+							"    res = pm.response.json();",
+							"} catch (e) {",
+							"    console.error(\"Response is not valid JSON:\", e);",
+							"    res = {};",
+							"}",
+							"let token = res.token",
+							"if (!token) {",
+							"    console.error(\"⚠️ Could not find token in response. Response keys:\", Object.keys(res));",
+							"} else {",
+							"    // Store it as a collection variable (so it persists for all requests)",
+							"    pm.collectionVariables.set(\"authtoken2\", token);",
+							"    pm.collectionVariables.set(\"user\", res.user.user_id);",
+							"    console.log(\"✅ Stored token:\", token);",
+							"    console.log(\"Stored user: \", res.user.user_id)",
+							"}",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"email\": \"user1@sjsu.edu\",\n  \"password\": \"Password123!\"\n}"
+				},
+				"url": {
+					"raw": "{{orchestratorURL}}/api/users/login",
+					"host": [
+						"{{orchestratorURL}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get user1 listings",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{listingURL}}/user/{{user}}",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						"user",
+						"{{user}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Profile johndoe",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{authtoken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{orchestratorURL}}/api/users/profile",
+					"host": [
+						"{{orchestratorURL}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"profile"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "create listing johndoe",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let res;",
+							"try {",
+							"    res = pm.response.json();",
+							"} catch (e) {",
+							"    console.error(\"Response is not valid JSON:\", e);",
+							"    res = {};",
+							"}",
+							"",
+							"let itemID = res.id",
+							"",
+							"if (!itemID) {",
+							"    console.error(\"⚠️ Could not find itemID in response. Response keys:\", Object.keys(res));",
+							"} else {",
+							"    // Store it as a collection variable (so it persists for all requests)",
+							"    pm.collectionVariables.set(\"itemID\", itemID);",
+							"    console.log(\"✅ Stored itemID:\", itemID);",
+							"}"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{authtoken}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"title\": \"test Vintage Chair\",\n  \"price\": 150,\n  \"category\": \"OTHER\",\n  \"description\": \"test Solid oak, lightly used, perfect for dining rooms.\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{listingURL}}/",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						""
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "get createdlisting",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{listingURL}}/{{itemID}}",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						"{{itemID}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "update createdlisting (fail good)",
+			"request": {
+				"method": "PATCH",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{authtoken}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"title\": \"painful change of thingy\",\n    \"status\": \"ARCHIVED\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{listingURL}}/{{itemID}}",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						"{{itemID}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "revert update",
+			"request": {
+				"method": "PATCH",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{authtoken}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"title\": \"test Vintage Chair\"\n}"
+				},
+				"url": {
+					"raw": "{{listingURL}}/{{itemID}}",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						"{{itemID}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "update strangerlisting",
+			"request": {
+				"method": "PATCH",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{authtoken2}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"title\": \"test Vintage Chair\"\n}"
+				},
+				"url": {
+					"raw": "{{listingURL}}/{{itemID}}",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						"{{itemID}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "chatsearch",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"query\": \"What are some test category other?\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{listingURL}}/chatsearch",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						"chatsearch"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Delete createdlisting",
+			"request": {
+				"method": "DELETE",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{authtoken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{listingURL}}/{{itemID}}?hard=true",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						"{{itemID}}"
+					],
+					"query": [
+						{
+							"key": "hard",
+							"value": "true"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "listingURL",
+			"value": ""
+		},
+		{
+			"key": "orchestratorURL",
+			"value": ""
+		},
+		{
+			"key": "authtoken",
+			"value": ""
+		},
+		{
+			"key": "authtoken2",
+			"value": ""
+		},
+		{
+			"key": "user",
+			"value": ""
+		},
+		{
+			"key": "itemID",
+			"value": "",
+			"type": "default"
+		}
+	]
+}

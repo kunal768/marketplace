@@ -18,7 +18,7 @@ import (
 func main() {
 	// Load environment variables from .env if present (current dir, then parent)
 	if err := godotenv.Load(); err != nil {
-		log.Fatal("Failed to load environment variables:", err)
+		log.Println("No .env file found; continuing with environment variables")
 	}
 
 	// Database connection via clients/db
@@ -26,6 +26,7 @@ func main() {
 	if dbURL == "" {
 		log.Fatal("DATABASE_URL is not set")
 	}
+	log.Println("Connecting to: ", dbURL)
 	dbsvc := dbclient.NewDBService(dbURL)
 	dbPool, err := dbsvc.Connect()
 	if err != nil {

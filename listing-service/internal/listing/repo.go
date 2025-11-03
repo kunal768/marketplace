@@ -21,14 +21,20 @@ type PgxPool interface {
 
 type Store struct{ P PgxPool }
 
-func (s *Store) Create(ctx context.Context, userID int64, p models.CreateParams) (models.Listing, error) {
+func (s *Store) Create(ctx context.Context, userID string, p models.CreateParams) (models.Listing, error) {
 	const q = `
-    INSERT INTO listings(title, description, price, category, user_id)
-    VALUES ($1,$2,$3,$4,$5)
-    RETURNING id, title, description, price, category, user_id, status, created_at`
+	WITH u AS (
+	SELECT user_id FROM users WHERE user_id = $5::uuid
+	)
+	INSERT INTO listings (title, description, price, category, user_id)
+	SELECT $1, $2, $3, $4, u.user_id
+	FROM u
+	RETURNING id, title, description, price, category, user_id, status, created_at;
+	`
 	var l models.Listing
 	err := s.P.QueryRow(ctx, q, p.Title, p.Description, p.Price, p.Category, userID).
 		Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.Category, &l.UserID, &l.Status, &l.CreatedAt)
+	log.Println("listing repo create done: ", userID)
 	return l, err
 }
 
@@ -37,7 +43,29 @@ func (s *Store) Get(ctx context.Context, id int64) (models.Listing, error) {
 	var l models.Listing
 	err := s.P.QueryRow(ctx, q, id).
 		Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.Category, &l.UserID, &l.Status, &l.CreatedAt)
+
 	return l, err
+}
+
+func (s *Store) GetUserLists(ctx context.Context, user_id string) ([]models.Listing, error) {
+	const q = `SELECT id,title,description,price,category,user_id,status,created_at FROM listings WHERE user_id=$1::uuid`
+	var args []any
+	args = append(args, user_id)
+	rows, err := s.P.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Listing
+	for rows.Next() {
+		var l models.Listing
+		if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.Category, &l.UserID, &l.Status, &l.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) List(ctx context.Context, f *models.ListFilters) ([]models.Listing, error) {
@@ -119,8 +147,8 @@ func (s *Store) List(ctx context.Context, f *models.ListFilters) ([]models.Listi
 	return out, rows.Err()
 }
 
-func (s *Store) Update(ctx context.Context, id int64, userid int64, p models.UpdateParams) (models.Listing, error) {
-	// build dynamic SET
+func (s *Store) Update(ctx context.Context, id int64, userID string, p models.UpdateParams) (models.Listing, error) {
+	// Build dynamic SET clause with positional parameters
 	var sets []string
 	var args []any
 	i := 1
@@ -155,13 +183,19 @@ func (s *Store) Update(ctx context.Context, id int64, userid int64, p models.Upd
 		return s.Get(ctx, id)
 	}
 
-	q := fmt.Sprintf(
-		`UPDATE listings SET %s WHERE id=$%d AND user_id=%d RETURNING id,title,description,price,category,user_id,status,created_at`,
-		strings.Join(sets, ","),
-		i,
-		userid,
-	)
-	args = append(args, id)
+	// WHERE placeholders use the next indexes
+	whereIDIdx := i
+	whereUserIdx := i + 1
+
+	q := fmt.Sprintf(`
+		UPDATE listings
+		SET %s
+		WHERE id=$%d AND user_id=$%d
+		RETURNING id, title, description, price, category, user_id, status, created_at
+	`, strings.Join(sets, ","), whereIDIdx, whereUserIdx)
+
+	// args order must match placeholders strictly
+	args = append(args, id, userID) // if user_id is UUID, you can use userID or cast: $%d::uuid
 
 	var l models.Listing
 	err := s.P.QueryRow(ctx, q, args...).
@@ -169,7 +203,7 @@ func (s *Store) Update(ctx context.Context, id int64, userid int64, p models.Upd
 	return l, err
 }
 
-func (s *Store) Archive(ctx context.Context, id int64, userid int64) error {
+func (s *Store) Archive(ctx context.Context, id int64, userid string) error {
 	var args []any
 	args = append(args, id)
 	args = append(args, userid)
@@ -177,7 +211,7 @@ func (s *Store) Archive(ctx context.Context, id int64, userid int64) error {
 	return err
 }
 
-func (s *Store) Delete(ctx context.Context, id int64, userid int64) error {
+func (s *Store) Delete(ctx context.Context, id int64, userid string) error {
 	var args []any
 	args = append(args, id)
 	args = append(args, userid)

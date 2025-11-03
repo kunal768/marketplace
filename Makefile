@@ -6,8 +6,11 @@ up:
 down:
 	docker compose down -v
 
-log-sa:
-	docker compose logs -f search-agent
+psql:
+	docker exec -it db psql -U postgres -d app
+
+log-or:
+	docker compose logs -f orchestrator
 
 log-ls:
 	docker compose logs -f listing-service

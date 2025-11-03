@@ -3,6 +3,7 @@ package users
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -305,5 +306,8 @@ func validateLoginRequest(req LoginRequest) error {
 func isValidEmail(email string) bool {
 	const emailRegex = `^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`
 	matched := regexp.MustCompile(emailRegex).MatchString(email)
+	log.Println("Login email check: ", email)
+	log.Println("Matched regex for email: ", matched)
+	log.Println("Suffix check: ", strings.HasSuffix(email, "@sjsu.edu"))
 	return matched && strings.HasSuffix(email, "@sjsu.edu")
 }

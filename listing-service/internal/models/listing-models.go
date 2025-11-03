@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Category string
 type Status string
@@ -42,7 +46,7 @@ type Listing struct {
 	Description *string   `json:"description,omitempty"`
 	Price       int64     `json:"price"`
 	Category    Category  `json:"category"`
-	UserID      int64     `json:"user_id"`
+	UserID      uuid.UUID `json:"user_id"`
 	Status      Status    `json:"status"`
 	CreatedAt   time.Time `json:"created_at"`
 }
