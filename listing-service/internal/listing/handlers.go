@@ -218,6 +218,61 @@ func (h *Handlers) GetUserListsHandler(w http.ResponseWriter, r *http.Request) {
 	platform.JSON(w, http.StatusOK, l)
 }
 
+func (h *Handlers) AddMediaHandler(w http.ResponseWriter, r *http.Request) {
+	// User Auth
+	// Get user ID from context (set by AuthMiddleware)
+	userTokenID, ok := r.Context().Value(httplib.ContextKey("userId")).(string)
+	if !ok {
+		platform.Error(w, http.StatusUnauthorized, "user not authenticated")
+		return
+	}
+
+	// Parse listing ID from URL parameter
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid listing ID")
+		return
+	}
+
+	// Decode JSON body
+	var p models.AddMediaParams
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	// Validate array is not empty
+	if len(p.MediaUrls) == 0 {
+		platform.Error(w, http.StatusBadRequest, "media_urls array cannot be empty")
+		return
+	}
+
+	// Call repository method to add media URLs
+	err = h.S.AddMediaUrls(r.Context(), id, userTokenID, p.MediaUrls)
+	if err != nil {
+		// Check error type to return appropriate status code
+		if err.Error() == "listing not found" {
+			platform.Error(w, http.StatusNotFound, "listing not found")
+			return
+		}
+		if err.Error() == "listing does not belong to user" {
+			platform.Error(w, http.StatusForbidden, "listing does not belong to user")
+			return
+		}
+		if err.Error() == "no URLs provided" || err.Error() == "no valid URLs provided" {
+			platform.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		platform.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	platform.JSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Media URLs added successfully",
+		"count":   len(p.MediaUrls),
+	})
+}
+
 func (h *Handlers) UploadUserMedia(w http.ResponseWriter, r *http.Request) {
 	// We allow 5 files * 20MB each + some overhead for form data
 	ctx := r.Context()

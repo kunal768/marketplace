@@ -160,9 +160,10 @@ func (s *svc) Login(ctx context.Context, req LoginRequest) (*LoginResponse, erro
 	}
 
 	return &LoginResponse{
-		Message: "Login successful",
-		Token:   accessToken,
-		User:    *user,
+		Message:      "Login successful",
+		Token:        accessToken,
+		RefreshToken: refreshToken,
+		User:         *user,
 	}, nil
 }
 

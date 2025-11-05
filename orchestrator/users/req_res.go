@@ -24,9 +24,10 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Message string      `json:"message"`
-	Token   string      `json:"token"`
-	User    models.User `json:"user"`
+	Message      string      `json:"message"`
+	Token        string      `json:"token"`
+	User         models.User `json:"user"`
+	RefreshToken string      `json:"refresh_token"`
 }
 
 // Refresh Token Request/Response

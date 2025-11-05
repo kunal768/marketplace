@@ -28,6 +28,7 @@ func Routes(h *Handlers, dbPool *pgxpool.Pool) *chi.Mux {
 	r.Get("/user/{user_id}", h.GetUserListsHandler)
 	r.With(protected).Patch("/{id}", h.UpdateHandler)
 	r.With(protected).Delete("/{id}", h.DeleteHandler)
+	r.With(protected).Post("/{id}/media", h.AddMediaHandler)
 	r.With(protected).Post("/upload", h.UploadUserMedia)
 	return r
 }

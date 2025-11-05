@@ -167,6 +167,39 @@
 			"response": []
 		},
 		{
+			"name": "Add Media URLs to Listing",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{auth_token}}",
+						"type": "default"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"media_urls\": [\n    \"https://example.com/image1.jpg\",\n    \"https://example.com/image2.jpg\"\n  ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{listingURL}}/2001/media",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						"2001",
+						"media"
+					]
+				}
+			},
+			"response": []
+		},
+		{
 			"name": "Delete createdlisting",
 			"request": {
 				"method": "DELETE",

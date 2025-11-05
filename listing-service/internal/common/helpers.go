@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -60,4 +61,16 @@ func IsValidMediaType(contentType string) bool {
 	}
 
 	return false
+}
+
+func FormatQuery(query string, args []any) string {
+	formatted := query
+	for i, arg := range args {
+		// convert argument to string safely
+		val := fmt.Sprintf("'%v'", arg)
+		// replace first occurrence of $1, $2, ...
+		placeholder := fmt.Sprintf("$%d", i+1)
+		formatted = strings.Replace(formatted, placeholder, val, 1)
+	}
+	return formatted
 }

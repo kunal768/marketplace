@@ -53,7 +53,6 @@ type Listing struct {
 	UserID      uuid.UUID  `json:"user_id"`
 	Status      Status     `json:"status"`
 	CreatedAt   time.Time  `json:"created_at"`
-	Media       []MediaUrl `json:"media,omitempty"`
 }
 
 type CreateParams struct {
@@ -69,6 +68,10 @@ type UpdateParams struct {
 	Price       *int64    `json:"price,omitempty"`
 	Category    *Category `json:"category,omitempty"`
 	Status      *Status   `json:"status,omitempty"`
+}
+
+type AddMediaParams struct {
+	MediaUrls []string `json:"media_urls"`
 }
 
 type ListFilters struct {

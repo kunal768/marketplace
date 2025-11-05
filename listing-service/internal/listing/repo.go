@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/kunal768/cmpe202/listing-service/internal/common"
 	"github.com/kunal768/cmpe202/listing-service/internal/models"
 )
 
@@ -128,7 +129,7 @@ func (s *Store) List(ctx context.Context, f *models.ListFilters) ([]models.Listi
 	}
 	sb.WriteString(fmt.Sprintf(" LIMIT %d OFFSET %d", f.Limit, f.Offset))
 
-	log.Println("List SQL Query: \n", FormatQuery(sb.String(), args))
+	log.Println("List SQL Query: \n", common.FormatQuery(sb.String(), args))
 
 	rows, err := s.P.Query(ctx, sb.String(), args...)
 	if err != nil {
@@ -215,20 +216,60 @@ func (s *Store) Delete(ctx context.Context, id int64, userid string) error {
 	var args []any
 	args = append(args, id)
 	args = append(args, userid)
-	log.Println("Testing Delete Query: ", FormatQuery(`DELETE FROM listings WHERE id=$1 and user_id=$2`, args))
+	log.Println("Testing Delete Query: ", common.FormatQuery(`DELETE FROM listings WHERE id=$1 and user_id=$2`, args))
 	_, err := s.P.Exec(ctx, `DELETE FROM listings WHERE id=$1 and user_id=$2`, args...)
 	log.Println("Finished Delete Query: ", err)
 	return err
 }
 
-func FormatQuery(query string, args []any) string {
-	formatted := query
-	for i, arg := range args {
-		// convert argument to string safely
-		val := fmt.Sprintf("'%v'", arg)
-		// replace first occurrence of $1, $2, ...
-		placeholder := fmt.Sprintf("$%d", i+1)
-		formatted = strings.Replace(formatted, placeholder, val, 1)
+func (s *Store) AddMediaUrls(ctx context.Context, listingID int64, userID string, urls []string) error {
+	// First verify the listing exists and belongs to the user
+	var ownerID string
+	err := s.P.QueryRow(ctx, `SELECT user_id::text FROM listings WHERE id=$1`, listingID).Scan(&ownerID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return fmt.Errorf("listing not found")
+		}
+		return fmt.Errorf("failed to verify listing ownership: %w", err)
 	}
-	return formatted
+
+	if ownerID != userID {
+		return fmt.Errorf("listing does not belong to user")
+	}
+
+	// Insert all URLs into listing_media table
+	// Using a batch insert with VALUES clause for efficiency
+	if len(urls) == 0 {
+		return fmt.Errorf("no URLs provided")
+	}
+
+	// Build VALUES clause with positional parameters
+	var valueParts []string
+	var args []any
+	argIndex := 1
+
+	for _, url := range urls {
+		if url == "" {
+			continue // Skip empty URLs
+		}
+		valueParts = append(valueParts, fmt.Sprintf("($%d, $%d)", argIndex, argIndex+1))
+		args = append(args, listingID, url)
+		argIndex += 2
+	}
+
+	if len(valueParts) == 0 {
+		return fmt.Errorf("no valid URLs provided")
+	}
+
+	query := fmt.Sprintf(`
+		INSERT INTO listing_media (listing_id, media_url)
+		VALUES %s
+	`, strings.Join(valueParts, ", "))
+
+	_, err = s.P.Exec(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to insert media URLs: %w", err)
+	}
+
+	return nil
 }
