@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/your-org/listing-service/internal/models"
+	"github.com/kunal768/cmpe202/listing-service/internal/models"
 )
 
 // Better: pass *pgxpool.Pool and open per-call connections

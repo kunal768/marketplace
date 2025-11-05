@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/your-org/listing-service/internal/models"
+	"github.com/kunal768/cmpe202/listing-service/internal/models"
 )
 
 // --- THIS IS THE UPDATED URL ---
