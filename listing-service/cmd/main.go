@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -9,10 +10,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
-
-	"github.com/your-org/listing-service/internal/gemini"
-	"github.com/your-org/listing-service/internal/listing"
-	"github.com/your-org/listing-service/internal/platform"
+	"github.com/kunal768/cmpe202/listing-service/internal/blob"
+	"github.com/kunal768/cmpe202/listing-service/internal/gemini"
+	"github.com/kunal768/cmpe202/listing-service/internal/listing"
+	"github.com/kunal768/cmpe202/listing-service/internal/platform"
 )
 
 func main() {
@@ -27,8 +28,21 @@ func main() {
 
 	// --- Gemini AI Client ---
 	aiClient := gemini.NewClient()
+	blobClient, err := blob.GetServiceClientTokenCredential(os.Getenv("AZURE_ACCOUNT_URL"))
+	blobService := blob.NewBlobService(
+		blobClient,
+		blob.AzureBlobCredentials{
+			AccountName:   blob.CREDENTIAL(os.Getenv("AZURE_ACCOUNTNAME")),
+			AccountKey:    blob.CREDENTIAL(os.Getenv("AZURE_ACCOUNTKEY")),
+			ContainerName: blob.CREDENTIAL(os.Getenv("AZURE_CONTAINERNAME")),
+		},
+	)
+	if err != nil {
+		fmt.Println("error : ", err.Error())
+		panic(err)
+	}
 
-	handlers := &listing.Handlers{S: store, AI: aiClient}
+	handlers := &listing.Handlers{S: store, AI: aiClient, BlobSvc: blobService}
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger) // <-- built-in logger

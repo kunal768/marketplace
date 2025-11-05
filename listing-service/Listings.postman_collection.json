@@ -1,10 +1,8 @@
 {
 	"info": {
-		"_postman_id": "9c9d2388-318f-4a46-8070-aeceda7d0b1b",
+		"_postman_id": "382094e5-93ef-4dad-a3ae-af570414a157",
 		"name": "Listings",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-		"_exporter_id": "49158031",
-		"_collection_link": "https://dan-lam-1998956.postman.co/workspace/Dan-Lam's-Workspace~6f289f2b-2161-4a8b-8e8f-752a891f06fb/collection/49158031-9c9d2388-318f-4a46-8070-aeceda7d0b1b?action=share&source=collection_link&creator=49158031"
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
 		{
@@ -218,6 +216,113 @@
 					],
 					"path": [
 						"chatsearch"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Generate Upload SAS url",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{auth_token}}",
+						"type": "default"
+					}
+				],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "media",
+							"type": "file",
+							"src": "@filepath1"
+						},
+						{
+							"key": "media",
+							"type": "file",
+							"src": "@filepath2"
+						}
+					]
+				},
+				"url": {
+					"raw": "localhost:8081/listings/upload",
+					"host": [
+						"localhost"
+					],
+					"port": "8081",
+					"path": [
+						"listings",
+						"upload"
+					]
+				},
+				"description": "generate SAS url for upload (server)"
+			},
+			"response": []
+		},
+		{
+			"name": "Client Side Code for actual Image upload",
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "x-ms-blob-type",
+						"value": "BlockBlob",
+						"type": "default"
+					},
+					{
+						"key": "Content-Type",
+						"value": "image/png",
+						"type": "default"
+					}
+				],
+				"body": {
+					"mode": "file",
+					"file": {
+						"src": "@filepath1"
+					}
+				},
+				"url": {
+					"raw": "@generatedSASurl",
+					"protocol": "https",
+					"host": [
+						"markeplace",
+						"blob",
+						"core",
+						"windows",
+						"net"
+					],
+					"path": [
+						"listingmedia",
+						"@filepath1"
+					],
+					"query": [
+						{
+							"key": "se",
+							"value": "2025-11-05T22%3A56%3A58Z"
+						},
+						{
+							"key": "sig",
+							"value": "BHSl7Z6uiikUIoEW0MMax2EqQCURsdI0hVHCFFM1FT8%3D"
+						},
+						{
+							"key": "sp",
+							"value": "raw"
+						},
+						{
+							"key": "spr",
+							"value": "https"
+						},
+						{
+							"key": "sr",
+							"value": "b"
+						},
+						{
+							"key": "sv",
+							"value": "2025-11-05"
+						}
 					]
 				}
 			},
