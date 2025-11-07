@@ -47,7 +47,7 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger) // <-- built-in logger
 
-	r.Mount("/listings", listing.Routes(handlers, pool))
+	r.Mount("/listings", listing.Routes(handlers))
 
 	log.Println("listening on", getenv("LISTING_PORT", "8080"))
 

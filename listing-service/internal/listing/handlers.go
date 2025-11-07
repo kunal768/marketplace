@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	httplib "github.com/kunal768/cmpe202/http-lib"
 	"github.com/kunal768/cmpe202/listing-service/internal/blob"
 	"github.com/kunal768/cmpe202/listing-service/internal/common"
 	"github.com/kunal768/cmpe202/listing-service/internal/gemini"
@@ -25,21 +24,10 @@ type Handlers struct {
 }
 
 func (h *Handlers) CreateHandler(w http.ResponseWriter, r *http.Request) {
-	// User Auth
-	// Get user ID from context (set by AuthMiddleware)
-	userTokenID, ok := r.Context().Value(httplib.ContextKey("userId")).(string)
-	if !ok {
-		platform.Error(w, http.StatusNotFound, "UpdateHandler: user not listed")
+	userID, err := common.ValidateUserAndRoleAuth(w, r)
+	if err != nil {
 		return
 	}
-
-	userRole, _ := r.Context().Value(httplib.ContextKey("userRole")).(int)
-
-	if userRole == 1 {
-		log.Println("user is indeed an admin! Not gonna do anything about it yet.")
-	}
-
-	//End user auth
 
 	var p models.CreateParams
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
@@ -51,7 +39,7 @@ func (h *Handlers) CreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	l, err := h.S.Create(r.Context(), userTokenID, p)
+	l, err := h.S.Create(r.Context(), userID, p)
 	if err != nil {
 		platform.Error(w, http.StatusInternalServerError, err.Error())
 		return
@@ -105,21 +93,11 @@ func (h *Handlers) ListHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) UpdateHandler(w http.ResponseWriter, r *http.Request) {
-	// User Auth
-	// Get user ID from context (set by AuthMiddleware)
-	userTokenID, ok := r.Context().Value(httplib.ContextKey("userId")).(string)
-	if !ok {
-		platform.Error(w, http.StatusNotFound, "UpdateHandler: user not listed")
+
+	userID, err := common.ValidateUserAndRoleAuth(w, r)
+	if err != nil {
 		return
 	}
-
-	userRole, _ := r.Context().Value(httplib.ContextKey("userRole")).(int)
-
-	if userRole == 1 {
-		log.Println("user is indeed an admin! Not gonna do anything about it yet.")
-	}
-	log.Println("Auth finished for updatehandler: ", userTokenID)
-	//End user auth
 
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	var p models.UpdateParams
@@ -129,7 +107,7 @@ func (h *Handlers) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Println("SQL update try from updatehandler")
-	l, err := h.S.Update(r.Context(), id, userTokenID, p)
+	l, err := h.S.Update(r.Context(), id, userID, p)
 	if err != nil {
 		platform.Error(w, http.StatusInternalServerError, err.Error())
 		return
@@ -140,30 +118,20 @@ func (h *Handlers) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) DeleteHandler(w http.ResponseWriter, r *http.Request) {
 	// User Auth
-	// Get user ID from context (set by AuthMiddleware)
-	userTokenID, ok := r.Context().Value(httplib.ContextKey("userId")).(string)
-	if !ok {
-		platform.Error(w, http.StatusNotFound, "UpdateHandler: user not listed")
+	userID, err := common.ValidateUserAndRoleAuth(w, r)
+	if err != nil {
 		return
 	}
 
-	userRole, _ := r.Context().Value(httplib.ContextKey("userRole")).(int)
-
-	if userRole == 1 {
-		log.Println("user is indeed an admin! Not gonna do anything about it yet.")
-	}
-
-	//End user auth
-
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if r.URL.Query().Get("hard") == "true" {
-		if err := h.S.Delete(r.Context(), id, userTokenID); err != nil {
+		if err := h.S.Delete(r.Context(), id, userID); err != nil {
 			platform.Error(w, 500, err.Error())
 			log.Println("Big pooopie delete")
 			return
 		}
 	} else {
-		if err := h.S.Archive(r.Context(), id, userTokenID); err != nil {
+		if err := h.S.Archive(r.Context(), id, userID); err != nil {
 			platform.Error(w, 500, err.Error())
 			return
 		}
@@ -209,21 +177,25 @@ func (h *Handlers) ChatSearchHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) GetUserListsHandler(w http.ResponseWriter, r *http.Request) {
-	user_id := chi.URLParam(r, "user_id")
-	l, err := h.S.GetUserLists(r.Context(), user_id)
+	userID, err := common.ValidateUserAndRoleAuth(w, r)
+	if err != nil {
+		return
+	}
+
+	l, err := h.S.GetUserLists(r.Context(), userID)
+
 	if err != nil {
 		platform.Error(w, http.StatusNotFound, "not found")
 		return
 	}
+
 	platform.JSON(w, http.StatusOK, l)
 }
 
-func (h *Handlers) AddMediaHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) AddMediaURLHandler(w http.ResponseWriter, r *http.Request) {
 	// User Auth
-	// Get user ID from context (set by AuthMiddleware)
-	userTokenID, ok := r.Context().Value(httplib.ContextKey("userId")).(string)
-	if !ok {
-		platform.Error(w, http.StatusUnauthorized, "user not authenticated")
+	userID, err := common.ValidateUserAndRoleAuth(w, r)
+	if err != nil {
 		return
 	}
 
@@ -248,7 +220,7 @@ func (h *Handlers) AddMediaHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Call repository method to add media URLs
-	err = h.S.AddMediaUrls(r.Context(), id, userTokenID, p.MediaUrls)
+	err = h.S.AddMediaUrls(r.Context(), id, userID, p.MediaUrls)
 	if err != nil {
 		// Check error type to return appropriate status code
 		if err.Error() == "listing not found" {
@@ -276,9 +248,8 @@ func (h *Handlers) AddMediaHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) UploadUserMedia(w http.ResponseWriter, r *http.Request) {
 	// We allow 5 files * 20MB each + some overhead for form data
 	ctx := r.Context()
-	userId, ok := r.Context().Value(httplib.ContextKey("userId")).(string)
-	if !ok {
-		platform.Error(w, http.StatusNotFound, "UpdateHandler: user not listed")
+	userID, err := common.ValidateUserAndRoleAuth(w, r)
+	if err != nil {
 		return
 	}
 
@@ -287,7 +258,7 @@ func (h *Handlers) UploadUserMedia(w http.ResponseWriter, r *http.Request) {
 	// 2. Parse the multipart form data
 	// The number here (20MB) is the max amount of memory to use for storing
 	// the whole request body; excess will be stored in temporary disk files.
-	err := r.ParseMultipartForm(models.MaxFileUploadSize)
+	err = r.ParseMultipartForm(models.MaxFileUploadSize)
 	if err != nil {
 		if err.Error() == "http: request body too large" {
 			http.Error(w, "Request body exceeds total size limit.", http.StatusRequestEntityTooLarge)
@@ -330,7 +301,7 @@ func (h *Handlers) UploadUserMedia(w http.ResponseWriter, r *http.Request) {
 		// b. Determine the unique, final destination name (blobName)
 		safeFileName := strings.ReplaceAll(filepath.Base(fileHeader.Filename), " ", "_")
 		// NOTE: In a real app, include a user/listing ID here for security and organization.
-		uniqueBlobName := fmt.Sprintf("%s-%s", userId, safeFileName)
+		uniqueBlobName := fmt.Sprintf("%s-%s", userID, safeFileName)
 
 		// c. Generate the secure SAS URL
 		sasResponse, err := h.BlobSvc.GenerateUploadSAS(ctx, uniqueBlobName)

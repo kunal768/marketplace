@@ -2,11 +2,11 @@ package models
 
 import "time"
 
-type UserRole int
+type UserRole string
 
 const (
-	ADMIN UserRole = 0 // admin
-	USER  UserRole = 1 // buyer, seller both are same roles
+	ADMIN UserRole = "0" // admin
+	USER  UserRole = "1" // buyer, seller both are same roles
 )
 
 type Contact struct {

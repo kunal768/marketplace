@@ -107,6 +107,39 @@ func RoleInjectionMiddleWare(dbPool *pgxpool.Pool) func(next http.Handler) http.
 	}
 }
 
+// EnforceXRequestID checks for the presence of the ""X-Request-ID" header.
+func EnforceXRequestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Request-ID") == "" {
+			http.Error(w, "Missing required header: X-Forward-From", http.StatusBadRequest)
+			return // Short-circuit
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// EnforceXUserID checks for the presence of the "X-User-ID" header.
+func EnforceXUserID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-User-ID") == "" {
+			http.Error(w, "Missing required header: X-User-ID", http.StatusBadRequest)
+			return // Short-circuit
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// EnforceXRoleID checks for the presence of the "X-Role-ID" header.
+func EnforceXRoleID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Role-ID") == "" {
+			http.Error(w, "Missing required header: X-Role-ID", http.StatusBadRequest)
+			return // Short-circuit
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func JSONRequestDecoder(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Do not strictly enforce Content-Type; just pass through
