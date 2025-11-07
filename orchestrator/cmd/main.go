@@ -11,6 +11,7 @@ import (
 	dbclient "github.com/kunal768/cmpe202/orchestrator/clients/db"
 	mongoclient "github.com/kunal768/cmpe202/orchestrator/clients/mongo"
 	"github.com/kunal768/cmpe202/orchestrator/internal/queue"
+	"github.com/kunal768/cmpe202/orchestrator/listings"
 	"github.com/kunal768/cmpe202/orchestrator/users"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -69,11 +70,20 @@ func main() {
 	userService := users.NewService(userRepo, publisher, mc)
 	userEndpoints := users.NewEndpoints(userService)
 
+	// Create listing service and endpoints
+	baseUrl := os.Getenv("LISTING_SERVICE_URL")
+	sharedSecret := os.Getenv("LISTING_SERVICE_SHARED_SECRET")
+	listingService := listings.NewListingService(baseUrl, sharedSecret)
+	listingEndpoints := listings.NewEndpoints(listingService)
+
 	// Setup HTTP server
 	mux := http.NewServeMux()
 
 	// Register user routes with middleware
 	userEndpoints.RegisterRoutes(mux, dbPool)
+
+	// Register listing routes with middleware
+	listingEndpoints.RegisterRoutes(mux, dbPool)
 
 	// Health check endpoint
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
