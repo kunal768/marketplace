@@ -28,9 +28,12 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{listingURL}}?limit=99&status=SOLD&keywords=compact&category=other&offset=0",
+					"raw": "{{listingURL}}/?limit=99&status=SOLD&keywords=compact&category=OTHER&offset=0",
 					"host": [
 						"{{listingURL}}"
+					],
+					"path": [
+						""
 					],
 					"query": [
 						{
@@ -47,7 +50,7 @@
 						},
 						{
 							"key": "category",
-							"value": "other"
+							"value": "OTHER"
 						},
 						{
 							"key": "offset",
@@ -67,11 +70,20 @@
 						"key": "X-User-ID",
 						"value": "123",
 						"type": "text"
+					},
+					{
+						"key": "X-Role-ID",
+						"value": "1",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
 					}
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n  \"title\": \"test Vintage Chair\",\n  \"price\": 150,\n  \"category\": \"other\",\n  \"description\": \"test Solid oak, lightly used, perfect for dining rooms.\"\n}",
+					"raw": "{\n  \"title\": \"test Vintage Chair\",\n  \"price\": 150,\n  \"category\": \"OTHER\",\n  \"description\": \"test Solid oak, lightly used, perfect for dining rooms.\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -79,12 +91,12 @@
 					}
 				},
 				"url": {
-					"raw": "{{listingURL}}/",
+					"raw": "{{listingURL}}/create",
 					"host": [
 						"{{listingURL}}"
 					],
 					"path": [
-						""
+						"create"
 					]
 				}
 			},
@@ -108,6 +120,35 @@
 			"response": []
 		},
 		{
+			"name": "Get User Listings",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "X-User-ID",
+						"value": "123",
+						"type": "text"
+					},
+					{
+						"key": "X-Role-ID",
+						"value": "1",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{listingURL}}/user-lists/",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						"user-lists",
+						""
+					]
+				}
+			},
+			"response": []
+		},
+		{
 			"name": "update createdlisting",
 			"request": {
 				"method": "PATCH",
@@ -116,6 +157,15 @@
 						"key": "X-User-ID",
 						"value": "123",
 						"type": "text"
+					},
+					{
+						"key": "X-Role-ID",
+						"value": "1",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
 					}
 				],
 				"body": {
@@ -128,11 +178,12 @@
 					}
 				},
 				"url": {
-					"raw": "{{listingURL}}/2001",
+					"raw": "{{listingURL}}/update/2001",
 					"host": [
 						"{{listingURL}}"
 					],
 					"path": [
+						"update",
 						"2001"
 					]
 				}
@@ -148,6 +199,15 @@
 						"key": "X-User-ID",
 						"value": "123",
 						"type": "text"
+					},
+					{
+						"key": "X-Role-ID",
+						"value": "1",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
 					}
 				],
 				"body": {
@@ -155,11 +215,12 @@
 					"raw": "{\n    \"title\": \"test Vintage Chair\"\n}"
 				},
 				"url": {
-					"raw": "{{listingURL}}/2001",
+					"raw": "{{listingURL}}/update/2001",
 					"host": [
 						"{{listingURL}}"
 					],
 					"path": [
+						"update",
 						"2001"
 					]
 				}
@@ -172,9 +233,18 @@
 				"method": "POST",
 				"header": [
 					{
-						"key": "Authorization",
-						"value": "Bearer {{auth_token}}",
-						"type": "default"
+						"key": "X-User-ID",
+						"value": "123",
+						"type": "text"
+					},
+					{
+						"key": "X-Role-ID",
+						"value": "1",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
 					}
 				],
 				"body": {
@@ -187,13 +257,13 @@
 					}
 				},
 				"url": {
-					"raw": "{{listingURL}}/2001/media",
+					"raw": "{{listingURL}}/add-media-url/2001",
 					"host": [
 						"{{listingURL}}"
 					],
 					"path": [
-						"2001",
-						"media"
+						"add-media-url",
+						"2001"
 					]
 				}
 			},
@@ -208,14 +278,20 @@
 						"key": "X-User-ID",
 						"value": "123",
 						"type": "text"
+					},
+					{
+						"key": "X-Role-ID",
+						"value": "1",
+						"type": "text"
 					}
 				],
 				"url": {
-					"raw": "{{listingURL}}/2001?hard=true",
+					"raw": "{{listingURL}}/delete/2001?hard=true",
 					"host": [
 						"{{listingURL}}"
 					],
 					"path": [
+						"delete",
 						"2001"
 					],
 					"query": [
@@ -232,7 +308,12 @@
 			"name": "chatsearch",
 			"request": {
 				"method": "POST",
-				"header": [],
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
 				"body": {
 					"mode": "raw",
 					"raw": "{\n    \"query\":\"Any routers?\"\n}",
@@ -260,9 +341,14 @@
 				"method": "POST",
 				"header": [
 					{
-						"key": "Authorization",
-						"value": "Bearer {{auth_token}}",
-						"type": "default"
+						"key": "X-User-ID",
+						"value": "123",
+						"type": "text"
+					},
+					{
+						"key": "X-Role-ID",
+						"value": "1",
+						"type": "text"
 					}
 				],
 				"body": {
@@ -271,27 +357,25 @@
 						{
 							"key": "media",
 							"type": "file",
-							"src": "@filepath1"
+							"src": []
 						},
 						{
 							"key": "media",
 							"type": "file",
-							"src": "@filepath2"
+							"src": []
 						}
 					]
 				},
 				"url": {
-					"raw": "localhost:8081/listings/upload",
+					"raw": "{{listingURL}}/upload",
 					"host": [
-						"localhost"
+						"{{listingURL}}"
 					],
-					"port": "8081",
 					"path": [
-						"listings",
 						"upload"
 					]
 				},
-				"description": "generate SAS url for upload (server)"
+				"description": "Upload file metadata to generate SAS URLs for direct blob storage upload"
 			},
 			"response": []
 		},

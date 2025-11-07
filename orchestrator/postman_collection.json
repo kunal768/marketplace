@@ -1,88 +1,273 @@
 {
   "info": {
-    "name": "Orchestrator User APIs",
+    "name": "Orchestrator APIs",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_postman_id": "f2a3e7d2-0c8d-4d7f-a6c1-3aa5f8b1d001"
   },
   "item": [
     {
-      "name": "Signup",
-      "request": {
-        "method": "POST",
-        "header": [
-          { "key": "Content-Type", "value": "application/json" }
-        ],
-        "url": {
-          "raw": "{{base_url}}/api/users/signup",
-          "host": ["{{base_url}}"],
-          "path": ["api", "users", "signup"]
+      "name": "Users",
+      "item": [
+        {
+          "name": "Signup",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/users/signup",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "signup"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_name\": \"John Doe\",\n  \"email\": \"john.doe@sjsu.edu\",\n  \"password\": \"secret123\",\n  \"phone\": \"+1-555-0100\"\n}"
+            }
+          },
+          "response": []
         },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"user_name\": \"John Doe\",\n  \"email\": \"john.doe@sjsu.edu\",\n  \"password\": \"secret123\",\n  \"phone\": \"+1-555-0100\"\n}"
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/users/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "login"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john.doe@sjsu.edu\",\n  \"password\": \"secret123\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/users/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "refresh"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/users/profile",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "profile"]
+            }
+          },
+          "response": []
         }
-      },
-      "response": []
+      ]
     },
     {
-      "name": "Login",
-      "request": {
-        "method": "POST",
-        "header": [
-          { "key": "Content-Type", "value": "application/json" }
-        ],
-        "url": {
-          "raw": "{{base_url}}/api/users/login",
-          "host": ["{{base_url}}"],
-          "path": ["api", "users", "login"]
+      "name": "Listings",
+      "item": [
+        {
+          "name": "Get All Listings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/listings/?limit=20&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "listings", ""],
+              "query": [
+                { "key": "limit", "value": "20", "disabled": true },
+                { "key": "offset", "value": "0", "disabled": true },
+                { "key": "sort", "value": "", "disabled": true },
+                { "key": "keywords", "value": "", "disabled": true },
+                { "key": "category", "value": "", "disabled": true },
+                { "key": "status", "value": "", "disabled": true },
+                { "key": "min_price", "value": "", "disabled": true },
+                { "key": "max_price", "value": "", "disabled": true }
+              ]
+            }
+          },
+          "response": []
         },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"email\": \"john.doe@sjsu.edu\",\n  \"password\": \"secret123\"\n}"
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Refresh Token",
-      "request": {
-        "method": "POST",
-        "header": [
-          { "key": "Content-Type", "value": "application/json" }
-        ],
-        "url": {
-          "raw": "{{base_url}}/api/users/refresh",
-          "host": ["{{base_url}}"],
-          "path": ["api", "users", "refresh"]
+        {
+          "name": "Get Listing by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/listings/{{listing_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "listings", "{{listing_id}}"]
+            }
+          },
+          "response": []
         },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+        {
+          "name": "Create Listing",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/listings/create",
+              "host": ["{{base_url}}"],
+              "path": ["api", "listings", "create"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Vintage Chair\",\n  \"price\": 150,\n  \"category\": \"OTHER\",\n  \"description\": \"Solid oak, lightly used, perfect for dining rooms.\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Listing",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/listings/update/{{listing_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "listings", "update", "{{listing_id}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Title\",\n  \"price\": 200,\n  \"status\": \"AVAILABLE\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Listing",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/listings/delete/{{listing_id}}?hard=false",
+              "host": ["{{base_url}}"],
+              "path": ["api", "listings", "delete", "{{listing_id}}"],
+              "query": [
+                { "key": "hard", "value": "false", "disabled": true }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get User Listings",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/listings/user-lists/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "listings", "user-lists", ""]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Media",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/listings/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "listings", "upload"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "media",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "description": "Upload file metadata to generate SAS URLs for direct blob storage upload"
+          },
+          "response": []
+        },
+        {
+          "name": "Add Media URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/listings/add-media-url/{{listing_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "listings", "add-media-url", "{{listing_id}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"media_urls\": [\n    \"https://example.com/image1.jpg\",\n    \"https://example.com/image2.jpg\"\n  ]\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Chat Search",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/listings/chatsearch",
+              "host": ["{{base_url}}"],
+              "path": ["api", "listings", "chatsearch"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"Any routers?\"\n}"
+            }
+          },
+          "response": []
         }
-      },
-      "response": []
-    },
-    {
-      "name": "Get Profile",
-      "request": {
-        "method": "GET",
-        "header": [
-          { "key": "Authorization", "value": "Bearer {{access_token}}" }
-        ],
-        "url": {
-          "raw": "{{base_url}}/api/users/profile",
-          "host": ["{{base_url}}"],
-          "path": ["api", "users", "profile"]
-        }
-      },
-      "response": []
+      ]
     }
   ],
   "event": [],
   "variable": [
     { "key": "base_url", "value": "http://localhost:8080" },
     { "key": "access_token", "value": "" },
-    { "key": "refresh_token", "value": "" }
+    { "key": "refresh_token", "value": "" },
+    { "key": "listing_id", "value": "" }
   ]
 }
 
