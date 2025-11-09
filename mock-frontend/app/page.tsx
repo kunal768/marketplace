@@ -1,57 +1,44 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/use-auth'
 import { useWebSocketConnection } from '@/hooks/use-websocket-connection'
-import { orchestratorApi } from '@/lib/api/orchestrator'
+import { useUnreadCount } from '@/hooks/use-unread-count'
 import { LoginForm } from '@/components/auth/login-form'
 import { SignupForm } from '@/components/auth/signup-form'
-import { MessageList } from '@/components/chat/message-list'
-import { MessageInput } from '@/components/chat/message-input'
 import { ConnectionStatus } from '@/components/connection/connection-status'
 import { TestControls } from '@/components/testing/test-controls'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { LogOut, Inbox } from 'lucide-react'
+import { LogOut, MessageSquare } from 'lucide-react'
 
 export default function HomePage() {
+  const router = useRouter()
   const [showSignup, setShowSignup] = useState(false)
   const { user, token, refreshToken, isAuthenticated, login, signup, logout } = useAuth()
   
-  // Simple WebSocket connection hook - auto-connects when userId and token are available
+  // WebSocket connection for receiving notifications
   const {
+    notification,
     connectionState,
-    messages,
     lastHeartbeat,
     connectionError,
-    notification,
+    messages,
     connect,
     disconnect,
-    sendMessage,
     sendHeartbeat,
     clearMessages,
   } = useWebSocketConnection(user?.user_id || null, token, refreshToken)
 
-  // Fetch undelivered messages at login
-  useEffect(() => {
-    if (isAuthenticated && token) {
-      orchestratorApi
-        .getUndeliveredMessages(token, refreshToken)
-        .then((result) => {
-          if (result.count > 0) {
-            console.log(`[HomePage] Found ${result.count} undelivered messages`)
-            // Messages will be delivered via WebSocket when user connects
-          }
-        })
-        .catch((error) => {
-          console.error('[HomePage] Failed to fetch undelivered messages:', error)
-        })
-    }
-  }, [isAuthenticated, token, refreshToken])
-
-  const messagesSent = messages.filter((m) => m.direction === 'sent').length
-  const messagesReceived = messages.filter((m) => m.direction === 'received').length
+  // Get unread conversation count (with polling enabled on homepage)
+  const { unreadConversationCount } = useUnreadCount(
+    user?.user_id || null,
+    token,
+    refreshToken,
+    true // Enable polling on homepage
+  )
 
   if (!isAuthenticated || !user) {
     return (
@@ -89,12 +76,19 @@ export default function HomePage() {
                 </p>
                 <p className="text-xs text-muted-foreground">User ID: {user.user_id}</p>
               </div>
-              {notification && notification.count > 0 && (
-                <Badge variant="default" className="flex items-center gap-2">
-                  <Inbox className="h-4 w-4" />
-                  {notification.count} undelivered message{notification.count !== 1 ? 's' : ''}
-                </Badge>
-              )}
+              <Button
+                onClick={() => router.push('/inbox')}
+                variant="outline"
+                size="icon"
+                className="relative h-11 w-11"
+              >
+                <MessageSquare className="h-5 w-5" />
+                {unreadConversationCount > 0 && (
+                  <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-primary text-primary-foreground">
+                    {unreadConversationCount > 9 ? "9+" : unreadConversationCount}
+                  </Badge>
+                )}
+              </Button>
             </div>
             <Button onClick={logout} variant="outline">
               <LogOut className="h-4 w-4 mr-2" />
@@ -103,50 +97,28 @@ export default function HomePage() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Main Chat Area */}
-          <div className="lg:col-span-2 space-y-4">
-            <MessageList messages={messages} currentUserId={user.user_id} />
-            <MessageInput
-              onSend={(recipientId, content) => {
-                sendMessage(recipientId, content)
-              }}
-              disabled={connectionState !== 'connected'}
-              recipientId=""
-            />
-          </div>
-
-          {/* Sidebar */}
-          <div className="space-y-4">
-            <ConnectionStatus
-              state={connectionState}
-              lastHeartbeat={lastHeartbeat}
-              messagesSent={messagesSent}
-              messagesReceived={messagesReceived}
-              error={connectionError}
-            />
-            <TestControls
-              connectionState={connectionState}
-              onConnect={async () => {
-                await connect()
-              }}
-              onDisconnect={disconnect}
-              onSendHeartbeat={sendHeartbeat}
-              onClearMessages={clearMessages}
-            />
-            <Card>
-              <CardHeader>
-                <CardTitle>Testing Instructions</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground space-y-2">
-                <p>1. Open multiple browser tabs/windows</p>
-                <p>2. Login with different users in each tab</p>
-                <p>3. Send messages between users</p>
-                <p>4. Test offline scenarios by disconnecting</p>
-                <p>5. Check MongoDB for message status</p>
-              </CardContent>
-            </Card>
-          </div>
+        {/* Connection Status and Test Controls */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <ConnectionStatus
+            state={connectionState}
+            lastHeartbeat={lastHeartbeat}
+            messagesSent={messages.filter((m) => m.direction === 'sent').length}
+            messagesReceived={messages.filter((m) => m.direction === 'received').length}
+            error={connectionError}
+          />
+          <TestControls
+            connectionState={connectionState}
+            onConnect={() => {
+              connect().catch((err) => {
+                console.error('Failed to connect:', err)
+              })
+            }}
+            onDisconnect={disconnect}
+            onSendHeartbeat={() => {
+              sendHeartbeat()
+            }}
+            onClearMessages={clearMessages}
+          />
         </div>
       </div>
     </div>

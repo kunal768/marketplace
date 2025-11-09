@@ -19,6 +19,7 @@ type MessageRepository interface {
 	UpdateMessageStatus(ctx context.Context, messageID string, status models.MessageStatus) error
 	GetMessageByID(ctx context.Context, messageID string) (*models.ChatMessage, error)
 	GetUndeliveredCount(ctx context.Context, recipientID string) (int, error)
+	GetConversationsWithUndeliveredCount(ctx context.Context, recipientID string) (int, error)
 	Close() error
 }
 
@@ -160,6 +161,22 @@ func (r *MongoMessageRepository) GetUndeliveredCount(ctx context.Context, recipi
 		return 0, fmt.Errorf("failed to count undelivered messages: %w", err)
 	}
 	return int(count), nil
+}
+
+// GetConversationsWithUndeliveredCount returns the count of distinct conversations (users) with undelivered messages
+func (r *MongoMessageRepository) GetConversationsWithUndeliveredCount(ctx context.Context, recipientID string) (int, error) {
+	filter := bson.M{
+		"recipientId": recipientID,
+		"status":      models.StatusUndelivered,
+	}
+
+	// Use distinct to get unique sender IDs
+	senderIDs, err := r.collection.Distinct(ctx, "senderId", filter)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get distinct senders: %w", err)
+	}
+
+	return len(senderIDs), nil
 }
 
 // Close closes the MongoDB connection

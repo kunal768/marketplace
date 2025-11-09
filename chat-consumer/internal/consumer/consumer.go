@@ -306,6 +306,7 @@ func (c *MessageConsumer) nackMessage(delivery amqp.Delivery) {
 }
 
 // sendUndeliveredNotification sends a notification to the user about undelivered messages
+// It sends the count of distinct conversations (users) with undelivered messages
 func (c *MessageConsumer) sendUndeliveredNotification(ctx context.Context, recipientID string) {
 	// Check if we've sent a notification for this user recently (within last minute)
 	c.notificationSentMu.RLock()
@@ -317,15 +318,33 @@ func (c *MessageConsumer) sendUndeliveredNotification(ctx context.Context, recip
 		return
 	}
 
-	// Count remaining undelivered messages
-	count, err := c.messageRepo.GetUndeliveredCount(ctx, recipientID)
+	// Count distinct conversations (users) with undelivered messages
+	count, err := c.messageRepo.GetConversationsWithUndeliveredCount(ctx, recipientID)
 	if err != nil {
-		log.Printf("Failed to count undelivered messages for user %s: %v", recipientID, err)
+		log.Printf("Failed to count conversations with undelivered messages for user %s: %v", recipientID, err)
 		return
 	}
 
 	if count == 0 {
-		// No undelivered messages remaining, no need to notify
+		// No conversations with undelivered messages, send notification with count 0 to clear badge
+		notification := map[string]interface{}{
+			"type":        "notification",
+			"subType":     "inbox",
+			"count":       0,
+			"recipientId": recipientID,
+		}
+
+		notificationBytes, err := json.Marshal(notification)
+		if err != nil {
+			log.Printf("Failed to marshal notification: %v", err)
+			return
+		}
+
+		// Publish notification to Redis channel
+		if _, err := c.messagePublisher.PublishToUser(ctx, recipientID, notificationBytes); err != nil {
+			log.Printf("Failed to publish notification to user %s: %v", recipientID, err)
+			return
+		}
 		return
 	}
 
@@ -354,7 +373,7 @@ func (c *MessageConsumer) sendUndeliveredNotification(ctx context.Context, recip
 	c.notificationSent[recipientID] = time.Now()
 	c.notificationSentMu.Unlock()
 
-	log.Printf("Notification sent to user %s: %d undelivered messages", recipientID, count)
+	log.Printf("Notification sent to user %s: %d conversations with undelivered messages", recipientID, count)
 }
 
 // Close closes the consumer and connections

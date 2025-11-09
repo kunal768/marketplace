@@ -257,7 +257,7 @@ func (c *Client) triggerUndeliveredMessagesFetch(ctx context.Context, token stri
 	defer cancel()
 
 	// Call dedicated endpoint for fetching and republishing undelivered messages
-	url := fmt.Sprintf("%s/api/users/fetch-undelivered", orchestratorURL)
+	url := fmt.Sprintf("%s/api/chat/fetch-undelivered", orchestratorURL)
 	httpStart := time.Now()
 	log.Printf("[TIMING] [%s] Calling orchestrator endpoint: %s at %v", c.ID, url, httpStart)
 
@@ -287,4 +287,56 @@ func (c *Client) triggerUndeliveredMessagesFetch(ctx context.Context, token stri
 	// Mark as fetched for this connection
 	c.undeliveredFetched = true
 	log.Printf("[TIMING] [%s] Successfully triggered undelivered messages fetch for user %s (one-time per connection, HTTP call took %v)", c.ID, c.ID, httpDuration)
+
+	// Send initial notification with conversations count
+	// This ensures the badge shows the correct count immediately on page load
+	c.sendInitialNotification(ctx, token, orchestratorURL)
+}
+
+// sendInitialNotification fetches the conversations count and sends a notification to the client
+func (c *Client) sendInitialNotification(ctx context.Context, token, orchestratorURL string) {
+	// Fetch conversations with undelivered count
+	url := fmt.Sprintf("%s/api/chat/conversations-with-undelivered-count", orchestratorURL)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		log.Printf("[Client] Failed to create conversations count request: %v", err)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[Client] Failed to fetch conversations count: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[Client] Orchestrator returned non-OK status when fetching conversations count: %d", resp.StatusCode)
+		return
+	}
+
+	var countResponse struct {
+		Count int `json:"count"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&countResponse); err != nil {
+		log.Printf("[Client] Failed to decode conversations count response: %v", err)
+		return
+	}
+
+	// Send notification to client
+	notification := NotificationMessage{
+		Type:    "notification",
+		SubType: "inbox",
+		Count:   countResponse.Count,
+	}
+	if err := c.SendNotification(notification); err != nil {
+		log.Printf("[Client] Failed to send initial notification: %v", err)
+		return
+	}
+
+	log.Printf("[Client] Sent initial notification to user %s: %d conversations with undelivered messages", c.ID, countResponse.Count)
 }

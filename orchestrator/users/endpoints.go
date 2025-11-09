@@ -1,14 +1,12 @@
 package users
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	httplib "github.com/kunal768/cmpe202/http-lib"
@@ -221,97 +219,8 @@ func (e *Endpoints) EventsVerifyHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// EventsVerifyHandler now only verifies authentication
-	// Undelivered messages fetching is handled by separate endpoint
 	httplib.WriteJSON(w, http.StatusOK, response)
 }
-
-// FetchAndRepublishUndeliveredMessagesHandler handles fetching and republishing undelivered messages
-// This is called by events-server AFTER user is marked as online in Redis
-// It fetches undelivered messages from MongoDB and republishes them to RabbitMQ queue
-func (e *Endpoints) FetchAndRepublishUndeliveredMessagesHandler(w http.ResponseWriter, r *http.Request) {
-	// Get user ID from context (set by AuthMiddleware)
-	userID, ok := r.Context().Value(httplib.ContextKey("userId")).(string)
-	if !ok {
-		httplib.WriteJSON(w, http.StatusUnauthorized, ErrorResponse{
-			Error:   "Unauthorized",
-			Message: "User ID not found in context",
-		})
-		return
-	}
-
-	// Use background context with timeout for the operation
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	// Fetch undelivered messages (this also republishes them to queue)
-	msgs, err := e.service.FetchUndeliveredMessages(ctx, userID)
-	if err != nil {
-		// If mongo client is not configured, return success with count 0
-		if err.Error() == "mongo client not configured" {
-			httplib.WriteJSON(w, http.StatusOK, FetchAndRepublishUndeliveredMessagesResponse{
-				Message: "No undelivered messages (MongoDB not configured)",
-				Count:   0,
-			})
-			return
-		}
-		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to fetch undelivered messages",
-			Message: err.Error(),
-		})
-		return
-	}
-
-	// Messages are already republished to queue by FetchUndeliveredMessages if publisher is configured
-	log.Printf("Fetched %d undelivered messages for user %s, republished to queue", len(msgs), userID)
-
-	response := FetchAndRepublishUndeliveredMessagesResponse{
-		Message: fmt.Sprintf("Fetched and republished %d undelivered messages", len(msgs)),
-		Count:   len(msgs),
-	}
-
-	httplib.WriteJSON(w, http.StatusOK, response)
-}
-
-// GetUndeliveredMessagesHandler handles getting undelivered messages for the authenticated user
-func (e *Endpoints) GetUndeliveredMessagesHandler(w http.ResponseWriter, r *http.Request) {
-	// Get user ID from context (set by AuthMiddleware)
-	userID, ok := r.Context().Value(httplib.ContextKey("userId")).(string)
-	if !ok {
-		httplib.WriteJSON(w, http.StatusUnauthorized, ErrorResponse{
-			Error:   "Unauthorized",
-			Message: "User ID not found in context",
-		})
-		return
-	}
-
-	// Call service to fetch undelivered messages
-	messages, err := e.service.FetchUndeliveredMessages(r.Context(), userID)
-	if err != nil {
-		// If mongo client is not configured, return empty array instead of error
-		if err.Error() == "mongo client not configured" {
-			httplib.WriteJSON(w, http.StatusOK, GetUndeliveredMessagesResponse{
-				Messages: []map[string]interface{}{},
-				Count:    0,
-			})
-			return
-		}
-		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to fetch undelivered messages",
-			Message: err.Error(),
-		})
-		return
-	}
-
-	response := GetUndeliveredMessagesResponse{
-		Messages: messages,
-		Count:    len(messages),
-	}
-
-	httplib.WriteJSON(w, http.StatusOK, response)
-}
-
-// helper to read env safely
-// Note: Mongo connect and fetch logic moved to users.Service.FetchUndeliveredMessages
 
 // RegisterRoutes registers all user routes with proper middleware
 func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
@@ -331,12 +240,6 @@ func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 
 	// All other routes require auth + role injection by default
 	mux.Handle("GET /api/users/profile", protected(http.HandlerFunc(e.GetUserHandler)))
-
-	// Undelivered messages endpoint (requires auth but not role injection)
-	mux.Handle("GET /api/users/undelivered-messages", httplib.AuthMiddleWare(http.HandlerFunc(e.GetUndeliveredMessagesHandler)))
-
-	// Fetch and republish undelivered messages endpoint (requires auth but not role injection)
-	mux.Handle("POST /api/users/fetch-undelivered", httplib.AuthMiddleWare(http.HandlerFunc(e.FetchAndRepublishUndeliveredMessagesHandler)))
 
 	// Events verification endpoint (requires auth but not role injection)
 	mux.Handle("POST /api/events/verify", httplib.AuthMiddleWare(httplib.JSONRequestDecoder(http.HandlerFunc(e.EventsVerifyHandler))))

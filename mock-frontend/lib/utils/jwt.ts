@@ -61,3 +61,20 @@ export function getTokenExpiration(token: string): number | null {
   return payload.exp * 1000 // Convert to milliseconds
 }
 
+/**
+ * Gets the current user ID from the JWT token stored in localStorage
+ */
+export function getCurrentUserId(): string | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  const token = localStorage.getItem('mock-frontend-loginToken')
+  if (!token) {
+    return null
+  }
+
+  const payload = decodeJWT(token)
+  return payload?.userId || null
+}
+

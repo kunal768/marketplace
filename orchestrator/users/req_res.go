@@ -54,18 +54,6 @@ type EventsVerifyResponse struct {
 	Valid   bool   `json:"valid"`
 }
 
-// Get Undelivered Messages Response
-type GetUndeliveredMessagesResponse struct {
-	Messages []map[string]interface{} `json:"messages"`
-	Count    int                        `json:"count"`
-}
-
-// Fetch and Republish Undelivered Messages Response
-type FetchAndRepublishUndeliveredMessagesResponse struct {
-	Message string `json:"message"`
-	Count   int    `json:"count"`
-}
-
 // Error Response
 type ErrorResponse struct {
 	Error   string `json:"error"`

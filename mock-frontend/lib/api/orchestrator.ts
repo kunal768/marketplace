@@ -191,7 +191,7 @@ export const orchestratorApi = {
     // Get valid token (refresh if needed)
     const validToken = await getValidToken(refreshToken) || token
 
-    const makeRequest = () => fetch(`${ORCHESTRATOR_URL}/api/users/undelivered-messages`, {
+    const makeRequest = () => fetch(`${ORCHESTRATOR_URL}/api/chat/undelivered-messages`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${validToken}`,
@@ -208,7 +208,97 @@ export const orchestratorApi = {
       tokenUpdateCallback || undefined,
       async () => {
         const newToken = await getValidToken(refreshToken)
-        return fetch(`${ORCHESTRATOR_URL}/api/users/undelivered-messages`, {
+        return fetch(`${ORCHESTRATOR_URL}/api/chat/undelivered-messages`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${newToken || validToken}`,
+            'Content-Type': 'application/json',
+          },
+        })
+      }
+    )
+  },
+
+  async getConversations(token: string, refreshToken: string | null): Promise<{ conversations: any[]; total: number }> {
+    const validToken = await getValidToken(refreshToken) || token
+
+    const makeRequest = () => fetch(`${ORCHESTRATOR_URL}/api/chat/conversations`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${validToken}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    const response = await makeRequest()
+    
+    return handleResponse<{ conversations: any[]; total: number }>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(`${ORCHESTRATOR_URL}/api/chat/conversations`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${newToken || validToken}`,
+            'Content-Type': 'application/json',
+          },
+        })
+      }
+    )
+  },
+
+  async getMessages(token: string, refreshToken: string | null, otherUserId: string): Promise<{ messages: any[]; count: number }> {
+    const validToken = await getValidToken(refreshToken) || token
+
+    const makeRequest = () => fetch(`${ORCHESTRATOR_URL}/api/chat/messages/${otherUserId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${validToken}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    const response = await makeRequest()
+    
+    return handleResponse<{ messages: any[]; count: number }>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(`${ORCHESTRATOR_URL}/api/chat/messages/${otherUserId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${newToken || validToken}`,
+            'Content-Type': 'application/json',
+          },
+        })
+      }
+    )
+  },
+
+  async getConversationsWithUndeliveredCount(token: string, refreshToken: string | null): Promise<{ count: number }> {
+    const validToken = await getValidToken(refreshToken) || token
+
+    const makeRequest = () => fetch(`${ORCHESTRATOR_URL}/api/chat/conversations-with-undelivered-count`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${validToken}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    const response = await makeRequest()
+    
+    return handleResponse<{ count: number }>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(`${ORCHESTRATOR_URL}/api/chat/conversations-with-undelivered-count`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${newToken || validToken}`,

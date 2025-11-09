@@ -110,7 +110,7 @@ func setupTestServerOnce(t *testing.T) {
 
 	// Initialize user components
 	userRepo := users.NewRepository(testDBPool)
-	userService := users.NewService(userRepo, publisher, testMongo)
+	userService := users.NewService(userRepo, publisher)
 	userEndpoints := users.NewEndpoints(userService)
 
 	// Initialize listing components
@@ -382,4 +382,3 @@ func generateTestEmail() string {
 func generateTestUsername() string {
 	return fmt.Sprintf("testuser_%d", time.Now().UnixNano())
 }
-
