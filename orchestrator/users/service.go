@@ -22,6 +22,7 @@ type Service interface {
 	Login(ctx context.Context, req LoginRequest) (*LoginResponse, error)
 	RefreshToken(ctx context.Context, req RefreshTokenRequest) (*RefreshTokenResponse, error)
 	GetUserByID(ctx context.Context, userID string) (*models.User, error)
+	SearchUsers(ctx context.Context, query string, excludeUserID string, page int, limit int) ([]UserSearchResult, error)
 }
 
 func NewService(repo Repository, publisher queue.Publisher) Service {
@@ -248,6 +249,25 @@ func (s *svc) GetUserByID(ctx context.Context, userID string) (*models.User, err
 	}
 
 	return user, nil
+}
+
+// SearchUsers searches users by username prefix with pagination
+func (s *svc) SearchUsers(ctx context.Context, query string, excludeUserID string, page int, limit int) ([]UserSearchResult, error) {
+	// Validate query
+	if len(query) < 1 {
+		return nil, fmt.Errorf("query must be at least 1 character")
+	}
+
+	// Calculate offset
+	offset := (page - 1) * limit
+
+	// Call repository
+	results, err := s.repo.SearchUsers(ctx, query, excludeUserID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search users: %w", err)
+	}
+
+	return results, nil
 }
 
 // generateUserID generates a unique user ID

@@ -53,3 +53,4 @@ CREATE TABLE IF NOT EXISTS user_login_auth (
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_user_login_auth_refresh ON user_login_auth(refresh_token);
+CREATE INDEX IF NOT EXISTS idx_users_user_name_lower ON users(LOWER(user_name));

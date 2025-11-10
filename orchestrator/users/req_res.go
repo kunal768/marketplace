@@ -58,3 +58,16 @@ type ErrorResponse struct {
 	Error   string `json:"error"`
 	Message string `json:"message"`
 }
+
+// User Search Request/Response
+type UserSearchResult struct {
+	UserId   string `json:"user_id"`
+	UserName string `json:"user_name"`
+}
+
+type SearchUsersResponse struct {
+	Users   []UserSearchResult `json:"users"`
+	Page    int                 `json:"page"`
+	Limit   int                 `json:"limit"`
+	HasMore bool                `json:"has_more"`
+}

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -222,6 +223,81 @@ func (e *Endpoints) EventsVerifyHandler(w http.ResponseWriter, r *http.Request) 
 	httplib.WriteJSON(w, http.StatusOK, response)
 }
 
+// SearchUsersHandler handles searching users by username prefix (requires authentication)
+func (e *Endpoints) SearchUsersHandler(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from context (set by AuthMiddleware)
+	userID, ok := r.Context().Value(httplib.ContextKey("userId")).(string)
+	if !ok {
+		httplib.WriteJSON(w, http.StatusUnauthorized, ErrorResponse{
+			Error:   "Unauthorized",
+			Message: "User ID not found in context",
+		})
+		return
+	}
+
+	// Extract query parameter (required)
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Query parameter 'q' is required",
+		})
+		return
+	}
+
+	// Validate query length
+	if len(query) < 1 {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Query must be at least 1 character",
+		})
+		return
+	}
+
+	// Extract page parameter (default: 1)
+	page := 1
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		if parsedPage, err := strconv.Atoi(pageStr); err == nil && parsedPage > 0 {
+			page = parsedPage
+		}
+	}
+
+	// Extract limit parameter (default: 20, max: 100)
+	limit := 20
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			if parsedLimit > 100 {
+				limit = 100
+			} else {
+				limit = parsedLimit
+			}
+		}
+	}
+
+	// Call service
+	results, err := e.service.SearchUsers(r.Context(), query, userID, page, limit)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Search failed",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	// Determine if there are more results
+	hasMore := len(results) == limit
+
+	// Build response
+	response := SearchUsersResponse{
+		Users:   results,
+		Page:    page,
+		Limit:   limit,
+		HasMore: hasMore,
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, response)
+}
+
 // RegisterRoutes registers all user routes with proper middleware
 func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 	// Default protected chain: JSON -> Auth -> Role
@@ -240,6 +316,7 @@ func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 
 	// All other routes require auth + role injection by default
 	mux.Handle("GET /api/users/profile", protected(http.HandlerFunc(e.GetUserHandler)))
+	mux.Handle("GET /api/users/search", protected(http.HandlerFunc(e.SearchUsersHandler)))
 
 	// Events verification endpoint (requires auth but not role injection)
 	mux.Handle("POST /api/events/verify", httplib.AuthMiddleWare(httplib.JSONRequestDecoder(http.HandlerFunc(e.EventsVerifyHandler))))

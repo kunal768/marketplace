@@ -20,6 +20,7 @@ type Repository interface {
 	GetUserByID(ctx context.Context, userID string) (*models.User, error)
 	UpdateUser(ctx context.Context, user *models.User) error
 	DeleteUser(ctx context.Context, userID string) error
+	SearchUsers(ctx context.Context, query string, excludeUserID string, limit int, offset int) ([]UserSearchResult, error)
 
 	// UserAuth operations
 	CreateUserAuth(ctx context.Context, userAuth *models.UserAuth) error
@@ -328,4 +329,37 @@ func (r *repo) DeleteUserLoginAuth(ctx context.Context, userID string) error {
 	query := `DELETE FROM user_login_auth WHERE user_id = $1`
 	_, err := r.db.Exec(ctx, query, userID)
 	return err
+}
+
+// SearchUsers searches users by username prefix (case-insensitive) with pagination
+func (r *repo) SearchUsers(ctx context.Context, query string, excludeUserID string, limit int, offset int) ([]UserSearchResult, error) {
+	sqlQuery := `
+		SELECT user_id, user_name
+		FROM users
+		WHERE LOWER(user_name) LIKE LOWER($1 || '%')
+		AND user_id != $2
+		ORDER BY user_name
+		LIMIT $3 OFFSET $4
+	`
+
+	rows, err := r.db.Query(ctx, sqlQuery, query, excludeUserID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search users: %w", err)
+	}
+	defer rows.Close()
+
+	var results []UserSearchResult
+	for rows.Next() {
+		var result UserSearchResult
+		if err := rows.Scan(&result.UserId, &result.UserName); err != nil {
+			return nil, fmt.Errorf("failed to scan user result: %w", err)
+		}
+		results = append(results, result)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating user results: %w", err)
+	}
+
+	return results, nil
 }
