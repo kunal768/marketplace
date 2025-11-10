@@ -109,13 +109,12 @@ export function useAuth() {
     }
   }, [])
 
-  const signup = useCallback(async (userName: string, email: string, password: string, phone: string) => {
+  const signup = useCallback(async (userName: string, email: string, password: string) => {
     try {
       const response: SignupResponse = await orchestratorApi.signup({
         user_name: userName,
         email,
         password,
-        phone,
       })
       const newState = {
         user: response.user,

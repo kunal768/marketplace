@@ -9,8 +9,7 @@ new_users AS (
     'user' || gs || '@sjsu.edu'    AS email,
     CASE WHEN gs % 10 = 0 THEN '0' ELSE '1' END AS role,
     jsonb_build_object(
-      'Email', 'user' || gs || '@sjsu.edu',
-      'Phone', '+1-555-' || to_char(1000+gs, 'FM0000')
+      'Email', 'user' || gs || '@sjsu.edu'
     ) AS contact
   FROM generate_series(1, 500) AS gs
 ),

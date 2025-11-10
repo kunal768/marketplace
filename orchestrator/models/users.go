@@ -11,7 +11,6 @@ const (
 
 type Contact struct {
 	Email string
-	Phone string
 }
 
 // User contains all user details except authentication credentials

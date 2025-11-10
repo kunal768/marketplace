@@ -74,9 +74,7 @@ func TestGetListingByID(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
-
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -165,9 +163,7 @@ func TestCreateListing(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
-
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -247,9 +243,7 @@ func TestCreateListing(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
-
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -292,9 +286,7 @@ func TestUpdateListing(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
-
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -384,9 +376,7 @@ func TestUpdateListing(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
-
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -424,9 +414,7 @@ func TestDeleteListing(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
-
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -494,9 +482,7 @@ func TestGetUserListings(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
-
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -570,9 +556,7 @@ func TestGetUserListings(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
-
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -615,9 +599,7 @@ func TestUploadMedia(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
-
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -695,9 +677,7 @@ func TestAddMediaURL(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
-
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}

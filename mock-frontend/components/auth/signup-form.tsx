@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 
 interface SignupFormProps {
-  onSignup: (userName: string, email: string, password: string, phone: string) => Promise<{ success: boolean; error?: string }>
+  onSignup: (userName: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>
   onSwitchToLogin: () => void
 }
 
@@ -15,7 +15,6 @@ export function SignupForm({ onSignup, onSwitchToLogin }: SignupFormProps) {
   const [userName, setUserName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [phone, setPhone] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -24,7 +23,7 @@ export function SignupForm({ onSignup, onSwitchToLogin }: SignupFormProps) {
     setError(null)
     setLoading(true)
 
-    const result = await onSignup(userName, email, password, phone)
+    const result = await onSignup(userName, email, password)
     setLoading(false)
 
     if (!result.success) {
@@ -78,17 +77,6 @@ export function SignupForm({ onSignup, onSwitchToLogin }: SignupFormProps) {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="phone">Phone</Label>
-            <Input
-              id="phone"
-              type="tel"
-              placeholder="+1-555-0100"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              required
             />
           </div>
           <Button type="submit" className="w-full" disabled={loading}>

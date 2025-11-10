@@ -265,9 +265,6 @@ func validateSignupRequest(req SignupRequest) error {
 	if len(req.Password) < 6 {
 		return fmt.Errorf("password must be at least 6 characters")
 	}
-	if req.Phone == "" {
-		return fmt.Errorf("phone is required")
-	}
 	return nil
 }
 

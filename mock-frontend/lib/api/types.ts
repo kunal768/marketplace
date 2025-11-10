@@ -4,7 +4,6 @@ export interface User {
   email: string
   contact?: {
     Email: string
-    Phone: string
   }
   role?: string
   created_at: string
@@ -15,7 +14,6 @@ export interface SignupRequest {
   user_name: string
   email: string
   password: string
-  phone: string
 }
 
 export interface SignupResponse {

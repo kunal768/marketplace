@@ -45,8 +45,8 @@ export default function HomePage() {
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         {showSignup ? (
           <SignupForm
-            onSignup={async (userName, email, password, phone) => {
-              return await signup(userName, email, password, phone)
+            onSignup={async (userName, email, password) => {
+              return await signup(userName, email, password)
             }}
             onSwitchToLogin={() => setShowSignup(false)}
           />

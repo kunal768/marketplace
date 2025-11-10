@@ -61,7 +61,6 @@ func (s *svc) Signup(ctx context.Context, req SignupRequest) (*SignupResponse, e
 		Role:     models.USER, // Default role
 		Contact: models.Contact{
 			Email: req.Email,
-			Phone: req.Phone,
 		},
 		CreatedAt: now,
 		UpdatedAt: now,

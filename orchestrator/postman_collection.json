@@ -22,7 +22,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"user_name\": \"John Doe\",\n  \"email\": \"john.doe@sjsu.edu\",\n  \"password\": \"secret123\",\n  \"phone\": \"+1-555-0100\"\n}"
+              "raw": "{\n  \"user_name\": \"John Doe\",\n  \"email\": \"john.doe@sjsu.edu\",\n  \"password\": \"secret123\"\n}"
             }
           },
           "response": []

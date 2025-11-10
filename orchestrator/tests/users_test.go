@@ -26,13 +26,10 @@ func TestSignupHandler(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
-
 		reqBody := map[string]string{
 			"user_name": username,
 			"email":     email,
 			"password":  password,
-			"phone":     phone,
 		}
 
 		body, err := json.Marshal(reqBody)
@@ -82,10 +79,8 @@ func TestSignupHandler(t *testing.T) {
 		email := generateTestEmail()
 		username1 := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
-
 		// Create first user
-		userID, err := createTestUser(t, email, username1, password, phone)
+		userID, err := createTestUser(t, email, username1, password)
 		if err != nil {
 			t.Fatalf("Failed to create first user: %v", err)
 		}
@@ -98,7 +93,6 @@ func TestSignupHandler(t *testing.T) {
 			"user_name": generateTestUsername(),
 			"email":     email,
 			"password":  password,
-			"phone":     phone,
 		}
 
 		body, err := json.Marshal(reqBody)
@@ -149,7 +143,6 @@ func TestSignupHandler(t *testing.T) {
 			"user_name": generateTestUsername(),
 			"email":     "notanemail",
 			"password":  "testpass123",
-			"phone":     "+1-555-0100",
 		}
 
 		body, err := json.Marshal(reqBody)
@@ -175,7 +168,6 @@ func TestSignupHandler(t *testing.T) {
 			"user_name": generateTestUsername(),
 			"email":     "test@gmail.com",
 			"password":  "testpass123",
-			"phone":     "+1-555-0100",
 		}
 
 		body, err := json.Marshal(reqBody)
@@ -202,10 +194,9 @@ func TestLoginHandler(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
 
 		// Create user first
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -254,10 +245,9 @@ func TestLoginHandler(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
 
 		// Create user first
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -343,10 +333,9 @@ func TestRefreshTokenHandler(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
 
 		// Create user and login
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -445,10 +434,9 @@ func TestGetUserHandler(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
 
 		// Create user and login
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -520,10 +508,9 @@ func TestEventsVerifyHandler(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
 
 		// Create user and login
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -595,10 +582,8 @@ func TestEventsVerifyHandler(t *testing.T) {
 		email1 := generateTestEmail()
 		username1 := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
-
 		// Create first user and login
-		userID1, err := createTestUser(t, email1, username1, password, phone)
+		userID1, err := createTestUser(t, email1, username1, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -614,7 +599,7 @@ func TestEventsVerifyHandler(t *testing.T) {
 		// Create second user
 		email2 := generateTestEmail()
 		username2 := generateTestUsername()
-		userID2, err := createTestUser(t, email2, username2, password, phone)
+		userID2, err := createTestUser(t, email2, username2, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -649,10 +634,9 @@ func TestEventsVerifyHandler(t *testing.T) {
 		email := generateTestEmail()
 		username := generateTestUsername()
 		password := "testpass123"
-		phone := "+1-555-0100"
 
 		// Create user and login
-		userID, err := createTestUser(t, email, username, password, phone)
+		userID, err := createTestUser(t, email, username, password)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}

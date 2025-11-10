@@ -166,12 +166,11 @@ func teardownTestServerOnce(t *testing.T) {
 }
 
 // createTestUser creates a test user via signup endpoint and stores credentials for cleanup
-func createTestUser(t *testing.T, email, username, password, phone string) (string, error) {
+func createTestUser(t *testing.T, email, username, password string) (string, error) {
 	reqBody := map[string]string{
 		"user_name": username,
 		"email":     email,
 		"password":  password,
-		"phone":     phone,
 	}
 
 	body, err := json.Marshal(reqBody)
