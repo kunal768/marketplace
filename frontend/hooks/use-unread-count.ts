@@ -63,6 +63,12 @@ export function useUnreadCount(
     const key = `${STORAGE_KEY_PREFIX}${otherUserId}`
     const now = new Date().toISOString()
     localStorage.setItem(key, now)
+    try {
+      // Notify other hook instances (e.g., Navigation) that a conversation was seen
+      window.dispatchEvent(new CustomEvent('conversation-seen', { detail: { otherUserId, seenAt: now } }))
+    } catch {
+      // no-op if CustomEvent is not available
+    }
 
     // Update local state immediately and recalculate count
     setConversations((prev) => {
@@ -203,6 +209,27 @@ export function useUnreadCount(
       return () => clearTimeout(timeoutId)
     }
   }, [wsMessages, userId, getConversationSeenTimestamp, calculateUnreadCount, refreshUnreadCount])
+
+  // Listen for cross-component/localStorage updates to seen state
+  useEffect(() => {
+    const onConversationSeen = () => {
+      // Recompute from API to ensure accuracy
+      refreshUnreadCount()
+    }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key && e.key.startsWith(STORAGE_KEY_PREFIX)) {
+        refreshUnreadCount()
+      }
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('conversation-seen', onConversationSeen as EventListener)
+      window.addEventListener('storage', onStorage)
+      return () => {
+        window.removeEventListener('conversation-seen', onConversationSeen as EventListener)
+        window.removeEventListener('storage', onStorage)
+      }
+    }
+  }, [refreshUnreadCount])
 
   // Polling when enabled (e.g., on homepage)
   useEffect(() => {

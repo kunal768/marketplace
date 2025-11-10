@@ -280,7 +280,7 @@ export const orchestratorApi = {
     })
   },
 
-  async searchUsers(token: string, refreshToken: string | null, query: string): Promise<{ users: User[] }> {
+  async searchUsers(token: string, refreshToken: string | null, query: string): Promise<{ users: User[]; page: number; limit: number; hasMore: boolean }> {
     const validToken = (await getValidToken(refreshToken)) || token
 
     const makeRequest = () =>
@@ -294,7 +294,7 @@ export const orchestratorApi = {
 
     const response = await makeRequest()
 
-    return handleResponse<{ users: User[] }>(response, refreshToken, tokenUpdateCallback || undefined, async () => {
+    return handleResponse<{ users: User[]; page: number; limit: number; hasMore: boolean }>(response, refreshToken, tokenUpdateCallback || undefined, async () => {
       const newToken = await getValidToken(refreshToken)
       return fetch(`${ORCHESTRATOR_URL}/api/users/search?q=${encodeURIComponent(query)}`, {
         method: "GET",

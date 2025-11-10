@@ -11,7 +11,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { Send, Search, MoreVertical, Plus, Loader2 } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Send, Search, MoreVertical, Plus, Loader2, Trash2, Check } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { useWebSocketConnection } from "@/hooks/use-websocket-connection"
 import { useUnreadCount } from "@/hooks/use-unread-count"
@@ -38,6 +39,7 @@ interface ChatMessage {
   status: string
   createdAt: string
   updatedAt: string
+  isRead?: boolean
 }
 
 export default function MessagesPage() {
@@ -48,7 +50,7 @@ export default function MessagesPage() {
     messages: wsMessages,
     connectionState,
   } = useWebSocketConnection(user?.user_id || null, token, refreshToken)
-  const { markConversationAsSeen } = useUnreadCount(
+  const { markConversationAsSeen, conversations: conversationsFromHook } = useUnreadCount(
     user?.user_id || null,
     token,
     refreshToken,
@@ -64,6 +66,7 @@ export default function MessagesPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<User[]>([])
   const [isSearching, setIsSearching] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -103,9 +106,13 @@ export default function MessagesPage() {
 
       try {
         const response = await orchestratorApi.getMessages(token, refreshToken, selectedConversation.otherUserId)
+        const messagesWithReadStatus = response.messages.map((msg: ChatMessage) => ({
+          ...msg,
+          isRead: true,
+        }))
         setMessages((prev) => ({
           ...prev,
-          [selectedConversation.otherUserId]: response.messages,
+          [selectedConversation.otherUserId]: messagesWithReadStatus,
         }))
         markConversationAsSeen(selectedConversation.otherUserId)
       } catch (error) {
@@ -117,11 +124,32 @@ export default function MessagesPage() {
   }, [selectedConversation, messages, isAuthenticated, token, refreshToken, markConversationAsSeen])
 
   useEffect(() => {
+    if (!selectedConversation || !user?.user_id) return
+
+    setMessages((prev) => {
+      const conversationMessages = prev[selectedConversation.otherUserId]
+      if (!conversationMessages) return prev
+
+      const updatedMessages = conversationMessages.map((msg) => ({
+        ...msg,
+        isRead: true,
+      }))
+
+      return {
+        ...prev,
+        [selectedConversation.otherUserId]: updatedMessages,
+      }
+    })
+  }, [selectedConversation, user?.user_id])
+
+  useEffect(() => {
     if (!user?.user_id) return
 
     wsMessages.forEach((wsMessage) => {
       if (wsMessage.direction === "received" && wsMessage.senderId !== user.user_id) {
         const otherUserId = wsMessage.senderId
+        const isCurrentlySelected = selectedConversation?.otherUserId === otherUserId
+
         const chatMessage: ChatMessage = {
           messageId: wsMessage.messageId,
           senderId: wsMessage.senderId,
@@ -132,6 +160,7 @@ export default function MessagesPage() {
           status: "delivered",
           createdAt: wsMessage.timestamp.toISOString(),
           updatedAt: wsMessage.timestamp.toISOString(),
+          isRead: isCurrentlySelected, // Mark as read if conversation is open
         }
 
         setMessages((prev) => {
@@ -147,6 +176,7 @@ export default function MessagesPage() {
 
         setConversations((prev) => {
           const existing = prev.find((c) => c.otherUserId === otherUserId)
+
           if (existing) {
             return prev.map((c) =>
               c.otherUserId === otherUserId
@@ -154,7 +184,7 @@ export default function MessagesPage() {
                     ...c,
                     lastMessage: chatMessage.content,
                     lastTimestamp: chatMessage.timestamp,
-                    unreadCount: c.unreadCount + 1,
+                    unreadCount: isCurrentlySelected ? 0 : c.unreadCount + 1,
                     isLastFromMe: false,
                   }
                 : c,
@@ -167,14 +197,18 @@ export default function MessagesPage() {
               otherUserName: undefined,
               lastMessage: chatMessage.content,
               lastTimestamp: chatMessage.timestamp,
-              unreadCount: 1,
+              unreadCount: isCurrentlySelected ? 0 : 1,
               isLastFromMe: false,
             },
           ]
         })
+
+        if (isCurrentlySelected) {
+          markConversationAsSeen(otherUserId)
+        }
       }
     })
-  }, [wsMessages, user?.user_id])
+  }, [wsMessages, user?.user_id, selectedConversation, markConversationAsSeen])
 
   useEffect(() => {
     if (selectedConversation && messages[selectedConversation.otherUserId]) {
@@ -225,6 +259,7 @@ export default function MessagesPage() {
           status: "sending",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
+          isRead: false,
         }
 
         setMessages((prev) => ({
@@ -244,6 +279,15 @@ export default function MessagesPage() {
               : c,
           )
         })
+
+        setTimeout(() => {
+          setMessages((prev) => ({
+            ...prev,
+            [selectedConversation.otherUserId]: prev[selectedConversation.otherUserId].map((msg) =>
+              msg.messageId === newMessage.messageId ? { ...msg, isRead: true } : msg,
+            ),
+          }))
+        }, 2000)
       } else {
         console.error("Failed to send message:", result.error)
       }
@@ -277,6 +321,7 @@ export default function MessagesPage() {
     setSearchResults([])
   }
 
+
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp)
     const now = new Date()
@@ -298,6 +343,11 @@ export default function MessagesPage() {
   }
 
   const currentUserId = getCurrentUserId()
+
+  const selectedMessages = selectedConversation ? messages[selectedConversation.otherUserId] || [] : []
+  const selectedConversationName =
+    selectedConversation?.otherUserName ||
+    (selectedConversation ? `User ${selectedConversation.otherUserId.slice(0, 8)}` : "Select a conversation")
 
   if (!isHydrated) {
     return (
@@ -324,11 +374,6 @@ export default function MessagesPage() {
       </div>
     )
   }
-
-  const selectedMessages = selectedConversation ? messages[selectedConversation.otherUserId] || [] : []
-  const selectedConversationName =
-    selectedConversation?.otherUserName ||
-    (selectedConversation ? `User ${selectedConversation.otherUserId.slice(0, 8)}` : "Select a conversation")
 
   return (
     <div className="min-h-screen bg-background">
@@ -359,6 +404,12 @@ export default function MessagesPage() {
               ) : (
                 conversations.map((conversation, index) => {
                   const isSelected = selectedConversation?.otherUserId === conversation.otherUserId
+                  // Source of truth for unread counts comes from useUnreadCount (same as Navigation)
+                  const unreadFromHook =
+                    (Array.isArray(conversationsFromHook)
+                      ? conversationsFromHook.find((c) => c.otherUserId === conversation.otherUserId)?.unreadCount
+                      : undefined) ?? conversation.unreadCount
+                  const unreadToDisplay = isSelected ? 0 : (unreadFromHook || 0)
                   return (
                     <button
                       key={conversation.otherUserId}
@@ -397,8 +448,8 @@ export default function MessagesPage() {
                           {conversation.lastMessage}
                         </p>
                       </div>
-                      {conversation.unreadCount > 0 && (
-                        <Badge className="bg-primary text-primary-foreground">{conversation.unreadCount}</Badge>
+                      {unreadToDisplay > 0 && (
+                        <Badge className="bg-primary text-primary-foreground">{unreadToDisplay}</Badge>
                       )}
                     </button>
                   )
@@ -421,9 +472,23 @@ export default function MessagesPage() {
                       <p className="text-xs text-muted-foreground">Offline</p>
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon">
-                    <MoreVertical className="h-5 w-5" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" disabled={isDeleting}>
+                        <MoreVertical className="h-5 w-5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => {}}
+                        className="text-destructive focus:text-destructive cursor-pointer"
+                        disabled={isDeleting}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        {isDeleting ? "Deleting..." : "Delete Chat"}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-4">
@@ -445,9 +510,10 @@ export default function MessagesPage() {
                             >
                               <p className="text-sm">{message.content}</p>
                             </div>
-                            <p className="text-xs text-muted-foreground mt-1 px-2">
-                              {formatMessageTime(message.timestamp)}
-                            </p>
+                            <div className="flex items-center gap-1 mt-1 px-2">
+                              <p className="text-xs text-muted-foreground">{formatMessageTime(message.timestamp)}</p>
+                              {isOwn && message.isRead && <Check className="h-3 w-3 text-primary" />}
+                            </div>
                           </div>
                         </div>
                       )
@@ -497,7 +563,7 @@ export default function MessagesPage() {
             <DialogDescription>Search for a user by name to start a conversation</DialogDescription>
           </DialogHeader>
 
-          <Command className="rounded-lg border min-h-[400px]">
+          <Command className="rounded-lg border min-h-[400px]" shouldFilter={false}>
             <CommandInput placeholder="Search users by name..." value={searchQuery} onValueChange={setSearchQuery} />
             <CommandList>
               {isSearching ? (
