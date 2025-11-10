@@ -32,6 +32,16 @@ export function Navigation() {
     }
   }
 
+  const handleLogout = () => {
+  
+    localStorage.removeItem("frontend-loginToken");
+    localStorage.removeItem("frontend-refreshToken");
+    localStorage.removeItem("frontend-user");
+    localStorage.removeItem("frontend-userId");
+
+    window.location.href = "/";
+  };
+
   return (
     <nav
       className={`sticky top-0 z-50 w-full border-b transition-all duration-300 ${
@@ -61,7 +71,7 @@ export function Navigation() {
           </div>
 
           <div className="hidden items-center gap-3 md:flex">
-            <Button asChild variant="ghost" size="lg" className="magnetic-button">
+            <Button asChild variant="outline" size="lg" className="magnetic-button">
               <Link href="/listings">
                 <Search className="mr-2 h-5 w-5" />
                 Browse
@@ -73,7 +83,7 @@ export function Navigation() {
                 Sell Item
               </Link>
             </Button>
-            <Button asChild variant="ghost" size="icon" className="h-11 w-11 magnetic-button">
+            <Button asChild variant="outline" size="icon" className="h-11 w-11 magnetic-button">
               <Link href="/messages">
                 <MessageSquare className="h-5 w-5" />
               </Link>
@@ -83,24 +93,24 @@ export function Navigation() {
                 <Button variant="ghost" size="icon" className="rounded-full h-11 w-11 magnetic-button">
                   <Avatar className="h-9 w-9 ring-2 ring-primary/20">
                     <AvatarImage src="/placeholder.svg?height=36&width=36" />
-                    <AvatarFallback>JD</AvatarFallback>
+                    <AvatarFallback>NS</AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem asChild>
+                <DropdownMenuItem asChild className="cursor-pointer">
                   <Link href="/profile">
                     <User className="mr-2 h-4 w-4" />
                     My Profile
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
+                <DropdownMenuItem asChild className="cursor-pointer">
                   <Link href="/profile">
                     <Settings className="mr-2 h-4 w-4" />
                     My Listings
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem onSelect={handleLogout} className="cursor-pointer">
                   <LogOut className="mr-2 h-4 w-4" />
                   Sign Out
                 </DropdownMenuItem>
