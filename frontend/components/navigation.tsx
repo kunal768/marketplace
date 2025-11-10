@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -9,6 +10,7 @@ import { Search, Plus, MessageSquare, User, Settings, LogOut, Menu } from "lucid
 import { useState, useEffect } from "react"
 
 export function Navigation() {
+  const router = useRouter()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
 
@@ -19,6 +21,16 @@ export function Navigation() {
     window.addEventListener("scroll", handleScroll)
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
+  const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault() 
+    const token = localStorage.getItem("frontend-loginToken") 
+
+    if (token) {
+      router.push("/home")
+    } else {
+      router.push("/")
+    }
+  }
 
   return (
     <nav
@@ -30,7 +42,7 @@ export function Navigation() {
     >
       <div className="container mx-auto px-4">
         <div className="flex h-20 items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-3 group">
+          <Link href="/" onClick={handleLogoClick} className="flex items-center gap-3 group">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-accent shadow-lg transition-transform group-hover:scale-110">
               <span className="text-xl font-bold text-primary-foreground">CM</span>
             </div>
