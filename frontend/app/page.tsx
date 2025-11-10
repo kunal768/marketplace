@@ -6,6 +6,7 @@ import { AuthForm } from "@/components/auth-form"
 
 export default function LoginPage() {
   const [showTransition, setShowTransition] = useState(false)
+  const [isFlipped, setIsFlipped] = useState(false)
 
   const handleLoginSuccess = () => {
     setShowTransition(true)
@@ -41,16 +42,17 @@ export default function LoginPage() {
         )}
 
         {/* Main Content Container */}
-        <div className="relative z-10 w-1/2 flex items-center px-8 md:px-16 lg:px-24"> 
+        <div className="relative z-10 w-1/2 flex px-8 md:px-16 lg:px-24 flex-col justify-center"> 
           
           {/* Content Wrapper  */}
           {!showTransition && (
             <div className="max-w-md w-full animate-scale-in-bounce"> 
-              <h1 className="text-4xl md:text-5xl font-bold text-white/90 text-left mb-12 animate-float-in-up">
-                Your Campus. Your Marketplace
-              </h1>
               
-              <AuthForm onLoginSuccess={handleLoginSuccess} />
+              <AuthForm 
+              onLoginSuccess={handleLoginSuccess} 
+              isFlipped={isFlipped}       
+              onFlip={setIsFlipped}
+              />
             </div>
           )}
         </div>
