@@ -9,6 +9,12 @@ down:
 psql:
 	docker exec -it db psql -U postgres -d app
 
+redis:
+	docker compose exec redis redis-cli
+
+mongo:
+	docker compose exec mongo mongosh
+
 log-or:
 	docker compose logs -f orchestrator
 
@@ -20,3 +26,9 @@ log-db:
 
 log-fr:
 	docker compose logs -f frontend
+
+log-es:
+	docker compose logs -f events-server
+
+log-cc:
+	docker compose logs -f chat-consumer
