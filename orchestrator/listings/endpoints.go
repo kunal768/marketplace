@@ -401,6 +401,63 @@ func (e *Endpoints) ChatSearchHandler(w http.ResponseWriter, r *http.Request) {
 	httplib.WriteJSON(w, http.StatusOK, response)
 }
 
+// GetFlaggedListingsHandler handles getting flagged listings (admin only)
+func (e *Endpoints) GetFlaggedListingsHandler(w http.ResponseWriter, r *http.Request) {
+	req := FetchFlaggedListingsRequest{}
+
+	// Parse optional status filter from query parameter
+	if status := r.URL.Query().Get("status"); status != "" {
+		st := FlagStatus(status)
+		req.Status = &st
+	}
+
+	// Call service (service will validate admin role)
+	response, err := e.service.FetchFlaggedListings(r.Context(), req)
+	if err != nil {
+		// Check if error is due to admin access requirement
+		if err.Error() == "admin access required" {
+			httplib.WriteJSON(w, http.StatusForbidden, ErrorResponse{
+				Error:   "Forbidden",
+				Message: "Admin access required",
+			})
+			return
+		}
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to fetch flagged listings",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, response)
+}
+
+// adminOnlyMiddleware checks if the user has admin role
+func adminOnlyMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		roleVal := ctx.Value(httplib.ContextKey("userRole"))
+		if roleVal == nil {
+			httplib.WriteJSON(w, http.StatusForbidden, ErrorResponse{
+				Error:   "Forbidden",
+				Message: "Admin access required",
+			})
+			return
+		}
+
+		role, ok := roleVal.(string)
+		if !ok || role != string(httplib.ADMIN) {
+			httplib.WriteJSON(w, http.StatusForbidden, ErrorResponse{
+				Error:   "Forbidden",
+				Message: "Admin access required",
+			})
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 // RegisterRoutes registers all listing routes with proper middleware
 func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 	// Default protected chain: JSON -> Auth -> Role
@@ -408,6 +465,17 @@ func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 		return httplib.AuthMiddleWare(
 			httplib.RoleInjectionMiddleWare(dbPool)(
 				httplib.JSONRequestDecoder(h),
+			),
+		)
+	}
+
+	// Admin-only protected chain: JSON -> Auth -> Role -> Admin Check
+	adminProtected := func(h http.Handler) http.Handler {
+		return httplib.AuthMiddleWare(
+			httplib.RoleInjectionMiddleWare(dbPool)(
+				adminOnlyMiddleware(
+					httplib.JSONRequestDecoder(h),
+				),
 			),
 		)
 	}
@@ -426,6 +494,9 @@ func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 		httplib.RoleInjectionMiddleWare(dbPool)(http.HandlerFunc(e.UploadMediaHandler)),
 	))
 	mux.Handle("POST /api/listings/add-media-url/{id}", protected(http.HandlerFunc(e.AddMediaURLHandler)))
+
+	// Admin-only routes
+	mux.Handle("GET /api/listings/flagged", adminProtected(http.HandlerFunc(e.GetFlaggedListingsHandler)))
 }
 
 // validateCreateListingRequest validates create listing request

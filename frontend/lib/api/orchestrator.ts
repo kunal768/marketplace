@@ -7,6 +7,8 @@ import type {
   RefreshTokenResponse,
   ErrorResponse,
   User,
+  FetchFlaggedListingsResponse,
+  FlagStatus,
 } from "./types"
 import { isTokenExpired } from "@/lib/utils/jwt"
 
@@ -95,7 +97,15 @@ async function handleResponse<T>(
           // Retry the original request with new token
           const retryResponse = await retryRequest()
           if (retryResponse.ok) {
-            return retryResponse.json()
+            const text = await retryResponse.text()
+            if (!text) {
+              throw new Error("Empty response from server")
+            }
+            try {
+              return JSON.parse(text) as T
+            } catch (parseError) {
+              throw new Error(`Invalid JSON response: ${text.substring(0, 100)}`)
+            }
           }
         }
       } catch (refreshError) {
@@ -104,13 +114,44 @@ async function handleResponse<T>(
       }
     }
 
-    const error: ErrorResponse = await response.json().catch(() => ({
-      error: "Unknown error",
-      message: `HTTP ${response.status}: ${response.statusText}`,
-    }))
+    // Try to parse error response, but handle empty or invalid JSON gracefully
+    let error: ErrorResponse
+    try {
+      const text = await response.text()
+      if (text) {
+        try {
+          error = JSON.parse(text)
+        } catch {
+          error = {
+            error: "Parse Error",
+            message: `HTTP ${response.status}: ${response.statusText}. Response: ${text.substring(0, 100)}`,
+          }
+        }
+      } else {
+        error = {
+          error: "Unknown error",
+          message: `HTTP ${response.status}: ${response.statusText}`,
+        }
+      }
+    } catch {
+      error = {
+        error: "Unknown error",
+        message: `HTTP ${response.status}: ${response.statusText}`,
+      }
+    }
     throw new Error(error.message || error.error || "Request failed")
   }
-  return response.json()
+  
+  // Parse successful response
+  const text = await response.text()
+  if (!text) {
+    throw new Error("Empty response from server")
+  }
+  try {
+    return JSON.parse(text) as T
+  } catch (parseError) {
+    throw new Error(`Invalid JSON response: ${text.substring(0, 100)}`)
+  }
 }
 
 // Export refresh function for use in hooks
@@ -304,5 +345,53 @@ export const orchestratorApi = {
         },
       })
     })
+  },
+
+  async getFlaggedListings(
+    token: string,
+    refreshToken: string | null,
+    status?: FlagStatus,
+  ): Promise<FetchFlaggedListingsResponse> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = status
+      ? `${ORCHESTRATOR_URL}/api/listings/flagged?status=${encodeURIComponent(status)}`
+      : `${ORCHESTRATOR_URL}/api/listings/flagged`
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    // Handle 404 specifically
+    if (response.status === 404) {
+      throw new Error("Flagged listings endpoint not found. Please check if the backend service is running.")
+    }
+
+    return handleResponse<FetchFlaggedListingsResponse>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        const retryResponse = await fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+        })
+        if (retryResponse.status === 404) {
+          throw new Error("Flagged listings endpoint not found. Please check if the backend service is running.")
+        }
+        return retryResponse
+      },
+    )
   },
 }

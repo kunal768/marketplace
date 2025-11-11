@@ -208,7 +208,7 @@ func (s *Store) Update(ctx context.Context, id int64, userID string, p models.Up
 func (s *Store) Archive(ctx context.Context, id int64, userid string, userRole string) error {
 	var args []any
 	args = append(args, id)
-	
+
 	// Admin can archive any listing, regular user can only archive their own
 	var query string
 	if userRole == string(httplib.ADMIN) {
@@ -217,7 +217,7 @@ func (s *Store) Archive(ctx context.Context, id int64, userid string, userRole s
 		query = `UPDATE listings SET status='ARCHIVED' WHERE id=$1 AND user_id=$2`
 		args = append(args, userid)
 	}
-	
+
 	_, err := s.P.Exec(ctx, query, args...)
 	return err
 }
@@ -225,7 +225,7 @@ func (s *Store) Archive(ctx context.Context, id int64, userid string, userRole s
 func (s *Store) Delete(ctx context.Context, id int64, userid string, userRole string) error {
 	var args []any
 	args = append(args, id)
-	
+
 	// Admin can delete any listing, regular user can only delete their own
 	var query string
 	if userRole == string(httplib.ADMIN) {
@@ -234,7 +234,7 @@ func (s *Store) Delete(ctx context.Context, id int64, userid string, userRole st
 		query = `DELETE FROM listings WHERE id=$1 AND user_id=$2`
 		args = append(args, userid)
 	}
-	
+
 	log.Println("Testing Delete Query: ", common.FormatQuery(query, args))
 	_, err := s.P.Exec(ctx, query, args...)
 	log.Println("Finished Delete Query: ", err)
@@ -291,4 +291,85 @@ func (s *Store) AddMediaUrls(ctx context.Context, listingID int64, userID string
 	}
 
 	return nil
+}
+
+// GetFlaggedListings retrieves all flagged listings with their associated listing details
+// If status is provided, filters by flag status. Otherwise returns all flagged listings.
+func (s *Store) GetFlaggedListings(ctx context.Context, status *string) ([]models.FlaggedListing, error) {
+	query := `
+		SELECT 
+			fl.id,
+			fl.listing_id,
+			fl.reporter_user_id,
+			fl.reason,
+			fl.details,
+			fl.status,
+			fl.reviewer_user_id,
+			fl.resolution_notes,
+			fl.created_at,
+			fl.updated_at,
+			fl.resolved_at,
+			l.id,
+			l.title,
+			l.description,
+			l.price,
+			l.category,
+			l.user_id,
+			l.status,
+			l.created_at
+		FROM flagged_listings fl
+		JOIN listings l ON fl.listing_id = l.id
+	`
+
+	var args []any
+	if status != nil && *status != "" {
+		query += " WHERE fl.status = $1"
+		args = append(args, *status)
+	}
+
+	query += " ORDER BY fl.created_at DESC"
+
+	log.Println("GetFlaggedListings SQL Query: \n", common.FormatQuery(query, args))
+
+	rows, err := s.P.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.FlaggedListing
+	for rows.Next() {
+		var fl models.FlaggedListing
+		var listing models.Listing
+
+		err := rows.Scan(
+			&fl.FlagID,
+			&fl.ListingID,
+			&fl.ReporterUserID,
+			&fl.Reason,
+			&fl.Details,
+			&fl.Status,
+			&fl.ReviewerUserID,
+			&fl.ResolutionNotes,
+			&fl.FlagCreatedAt,
+			&fl.FlagUpdatedAt,
+			&fl.FlagResolvedAt,
+			&listing.ID,
+			&listing.Title,
+			&listing.Description,
+			&listing.Price,
+			&listing.Category,
+			&listing.UserID,
+			&listing.Status,
+			&listing.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan flagged listing: %w", err)
+		}
+
+		fl.Listing = listing
+		out = append(out, fl)
+	}
+
+	return out, rows.Err()
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	httplib "github.com/kunal768/cmpe202/http-lib"
 	"github.com/kunal768/cmpe202/listing-service/internal/blob"
 	"github.com/kunal768/cmpe202/listing-service/internal/common"
 	"github.com/kunal768/cmpe202/listing-service/internal/gemini"
@@ -325,4 +326,35 @@ func (h *Handlers) UploadUserMedia(w http.ResponseWriter, r *http.Request) {
 	} else {
 		platform.Error(w, http.StatusBadRequest, "No valid file metadata was processed.")
 	}
+}
+
+// GetFlaggedListingsHandler handles getting all flagged listings (admin only)
+func (h *Handlers) GetFlaggedListingsHandler(w http.ResponseWriter, r *http.Request) {
+	// Validate user is authenticated and get role
+	_, userRole, err := common.ValidateUserAndRoleAuthWithRole(w, r)
+	if err != nil {
+		return
+	}
+
+	// Check if user is admin
+	if userRole != string(httplib.ADMIN) {
+		platform.Error(w, http.StatusForbidden, "admin access required")
+		return
+	}
+
+	// Get optional status filter from query parameter
+	var statusFilter *string
+	if status := r.URL.Query().Get("status"); status != "" {
+		statusFilter = &status
+	}
+
+	// Fetch flagged listings from repository
+	flaggedListings, err := h.S.GetFlaggedListings(r.Context(), statusFilter)
+	if err != nil {
+		log.Printf("Error fetching flagged listings: %v", err)
+		platform.Error(w, http.StatusInternalServerError, "failed to fetch flagged listings")
+		return
+	}
+
+	platform.JSON(w, http.StatusOK, flaggedListings)
 }

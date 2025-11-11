@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Search, Plus, MessageSquare, User, Settings, LogOut, Menu } from "lucide-react"
+import { Search, Plus, MessageSquare, User, Settings, LogOut, Menu, Flag } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useUnreadCount } from "@/hooks/use-unread-count"
@@ -133,6 +133,14 @@ export function Navigation() {
                     My Listings
                   </Link>
                 </DropdownMenuItem>
+                {user?.role === "0" && (
+                  <DropdownMenuItem asChild className="cursor-pointer">
+                    <Link href="/flagged">
+                      <Flag className="mr-2 h-4 w-4" />
+                      Flagged Listings
+                    </Link>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onSelect={handleLogout} className="cursor-pointer">
                   <LogOut className="mr-2 h-4 w-4" />
                   Sign Out
@@ -194,6 +202,14 @@ export function Navigation() {
                   My Listings
                 </Link>
               </Button>
+              {user?.role === "0" && (
+                <Button asChild variant="ghost" className="justify-start">
+                  <Link href="/flagged">
+                    <Flag className="mr-2 h-4 w-4" />
+                    Flagged Listings
+                  </Link>
+                </Button>
+              )}
             </div>
           </div>
         )}

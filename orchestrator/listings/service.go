@@ -35,6 +35,7 @@ type Service interface {
 	UploadMedia(ctx context.Context, r *http.Request, listingID *int64) (*UploadMediaResponse, error)
 	AddMediaURL(ctx context.Context, req AddMediaURLRequest) (*AddMediaURLResponse, error)
 	ChatSearch(ctx context.Context, req ChatSearchRequest) (*ChatSearchResponse, error)
+	FetchFlaggedListings(ctx context.Context, req FetchFlaggedListingsRequest) (*FetchFlaggedListingsResponse, error)
 }
 
 func NewListingService(baseUrl string, sharedSecret string) Service {
@@ -508,4 +509,60 @@ func (s *svc) ChatSearch(ctx context.Context, req ChatSearchRequest) (*ChatSearc
 	}
 
 	return &ChatSearchResponse{Listings: listings}, nil
+}
+
+func (s *svc) FetchFlaggedListings(ctx context.Context, req FetchFlaggedListingsRequest) (*FetchFlaggedListingsResponse, error) {
+	// Extract and validate user role - must be admin
+	userID, roleID, err := s.extractUserAndRole(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if user is admin
+	if roleID != string(httplib.ADMIN) {
+		return nil, fmt.Errorf("admin access required")
+	}
+
+	// Build URL with optional status filter
+	fullURL := s.config.URL + "/listings/flagged"
+	u, err := url.Parse(fullURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse URL: %w", err)
+	}
+
+	if req.Status != nil {
+		q := u.Query()
+		q.Set("status", string(*req.Status))
+		u.RawQuery = q.Encode()
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Forward user ID and role ID headers
+	httpReq.Header.Set("X-User-ID", userID)
+	httpReq.Header.Set("X-Role-ID", roleID)
+
+	resp, err := s.config.Client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var flaggedListings []FlaggedListing
+	if err := json.NewDecoder(resp.Body).Decode(&flaggedListings); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &FetchFlaggedListingsResponse{
+		FlaggedListings: flaggedListings,
+		Count:           len(flaggedListings),
+	}, nil
 }
