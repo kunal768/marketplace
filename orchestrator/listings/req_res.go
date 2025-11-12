@@ -143,3 +143,66 @@ type ChatSearchRequest struct {
 type ChatSearchResponse struct {
 	Listings []Listing `json:"listings"`
 }
+
+// FlagReason represents the reason a listing was flagged
+type FlagReason string
+
+const (
+	FlagReasonSpam          FlagReason = "SPAM"
+	FlagReasonScam          FlagReason = "SCAM"
+	FlagReasonInappropriate FlagReason = "INAPPROPRIATE"
+	FlagReasonMisleading    FlagReason = "MISLEADING"
+	FlagReasonOther         FlagReason = "OTHER"
+)
+
+// FlagStatus represents the status of a flag
+type FlagStatus string
+
+const (
+	FlagStatusOpen        FlagStatus = "OPEN"
+	FlagStatusUnderReview FlagStatus = "UNDER_REVIEW"
+	FlagStatusResolved    FlagStatus = "RESOLVED"
+	FlagStatusDismissed   FlagStatus = "DISMISSED"
+)
+
+// FlaggedListing represents a flagged listing with both flag and listing information
+type FlaggedListing struct {
+	// Flag information
+	FlagID          int64      `json:"flag_id"`
+	ListingID       int64      `json:"listing_id"`
+	ReporterUserID  *uuid.UUID `json:"reporter_user_id,omitempty"`
+	Reason          FlagReason `json:"reason"`
+	Details         *string    `json:"details,omitempty"`
+	Status          FlagStatus `json:"status"`
+	ReviewerUserID  *uuid.UUID `json:"reviewer_user_id,omitempty"`
+	ResolutionNotes *string    `json:"resolution_notes,omitempty"`
+	FlagCreatedAt   time.Time  `json:"flag_created_at"`
+	FlagUpdatedAt   time.Time  `json:"flag_updated_at"`
+	FlagResolvedAt  *time.Time `json:"flag_resolved_at,omitempty"`
+
+	// Listing information
+	Listing Listing `json:"listing"`
+}
+
+// FetchFlaggedListingsRequest for filtering flagged listings
+type FetchFlaggedListingsRequest struct {
+	Status *FlagStatus `json:"status,omitempty"` // Optional filter by flag status
+}
+
+// FetchFlaggedListingsResponse returns flagged listings
+type FetchFlaggedListingsResponse struct {
+	FlaggedListings []FlaggedListing `json:"flagged_listings"`
+	Count           int              `json:"count"`
+}
+
+// FlagListingRequest for flagging a listing
+type FlagListingRequest struct {
+	ListingID int64      `json:"listing_id"`
+	Reason    FlagReason `json:"reason"`
+	Details   *string    `json:"details,omitempty"`
+}
+
+// FlagListingResponse returns the flagged listing
+type FlagListingResponse struct {
+	FlaggedListing FlaggedListing `json:"flagged_listing"`
+}

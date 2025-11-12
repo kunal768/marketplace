@@ -7,6 +7,14 @@ import type {
   RefreshTokenResponse,
   ErrorResponse,
   User,
+  FetchFlaggedListingsResponse,
+  FlagStatus,
+  FetchAllListingsRequest,
+  FetchAllListingsResponse,
+  Listing,
+  FlagListingRequest,
+  FlagListingResponse,
+  FlagReason,
 } from "./types"
 import { isTokenExpired } from "@/lib/utils/jwt"
 
@@ -95,7 +103,15 @@ async function handleResponse<T>(
           // Retry the original request with new token
           const retryResponse = await retryRequest()
           if (retryResponse.ok) {
-            return retryResponse.json()
+            const text = await retryResponse.text()
+            if (!text) {
+              throw new Error("Empty response from server")
+            }
+            try {
+              return JSON.parse(text) as T
+            } catch (parseError) {
+              throw new Error(`Invalid JSON response: ${text.substring(0, 100)}`)
+            }
           }
         }
       } catch (refreshError) {
@@ -104,13 +120,44 @@ async function handleResponse<T>(
       }
     }
 
-    const error: ErrorResponse = await response.json().catch(() => ({
-      error: "Unknown error",
-      message: `HTTP ${response.status}: ${response.statusText}`,
-    }))
+    // Try to parse error response, but handle empty or invalid JSON gracefully
+    let error: ErrorResponse
+    try {
+      const text = await response.text()
+      if (text) {
+        try {
+          error = JSON.parse(text)
+        } catch {
+          error = {
+            error: "Parse Error",
+            message: `HTTP ${response.status}: ${response.statusText}. Response: ${text.substring(0, 100)}`,
+          }
+        }
+      } else {
+        error = {
+          error: "Unknown error",
+          message: `HTTP ${response.status}: ${response.statusText}`,
+        }
+      }
+    } catch {
+      error = {
+        error: "Unknown error",
+        message: `HTTP ${response.status}: ${response.statusText}`,
+      }
+    }
     throw new Error(error.message || error.error || "Request failed")
   }
-  return response.json()
+  
+  // Parse successful response
+  const text = await response.text()
+  if (!text) {
+    throw new Error("Empty response from server")
+  }
+  try {
+    return JSON.parse(text) as T
+  } catch (parseError) {
+    throw new Error(`Invalid JSON response: ${text.substring(0, 100)}`)
+  }
 }
 
 // Export refresh function for use in hooks
@@ -304,5 +351,252 @@ export const orchestratorApi = {
         },
       })
     })
+  },
+
+  async getFlaggedListings(
+    token: string,
+    refreshToken: string | null,
+    status?: FlagStatus,
+  ): Promise<FetchFlaggedListingsResponse> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = status
+      ? `${ORCHESTRATOR_URL}/api/listings/flagged?status=${encodeURIComponent(status)}`
+      : `${ORCHESTRATOR_URL}/api/listings/flagged`
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    // Handle 404 specifically
+    if (response.status === 404) {
+      throw new Error("Flagged listings endpoint not found. Please check if the backend service is running.")
+    }
+
+    return handleResponse<FetchFlaggedListingsResponse>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        const retryResponse = await fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+        })
+        if (retryResponse.status === 404) {
+          throw new Error("Flagged listings endpoint not found. Please check if the backend service is running.")
+        }
+        return retryResponse
+      },
+    )
+  },
+
+  async getAllListings(
+    token: string,
+    refreshToken: string | null,
+    filters?: FetchAllListingsRequest,
+  ): Promise<FetchAllListingsResponse> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    // Build query string from filters
+    const params = new URLSearchParams()
+    if (filters?.keywords) {
+      params.set("keywords", filters.keywords)
+    }
+    if (filters?.category) {
+      params.set("category", filters.category)
+    }
+    if (filters?.status) {
+      params.set("status", filters.status)
+    }
+    if (filters?.min_price !== undefined) {
+      params.set("min_price", filters.min_price.toString())
+    }
+    if (filters?.max_price !== undefined) {
+      params.set("max_price", filters.max_price.toString())
+    }
+    if (filters?.limit !== undefined) {
+      params.set("limit", filters.limit.toString())
+    }
+    if (filters?.offset !== undefined) {
+      params.set("offset", filters.offset.toString())
+    }
+    if (filters?.sort) {
+      params.set("sort", filters.sort)
+    }
+
+    const url = `${ORCHESTRATOR_URL}/api/listings${params.toString() ? `?${params.toString()}` : ""}`
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<FetchAllListingsResponse>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+        })
+      },
+    )
+  },
+
+  async getListingById(token: string, refreshToken: string | null, listingId: number): Promise<Listing> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/${listingId}`
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    // Handle 404 specifically for listing not found
+    if (response.status === 404) {
+      throw new Error("Listing not found")
+    }
+
+    // Response format is Listing (embedded field flattens in JSON)
+    return handleResponse<Listing>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        const retryResponse = await fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+        })
+        if (retryResponse.status === 404) {
+          throw new Error("Listing not found")
+        }
+        return retryResponse
+      },
+    )
+  },
+
+  /**
+   * Flag a listing
+   * @param token - Access token
+   * @param refreshToken - Refresh token
+   * @param listingId - Listing ID to flag
+   * @param reason - Flag reason
+   * @param details - Optional details
+   * @param tokenUpdateCallback - Optional callback for token updates
+   * @returns Flagged listing response
+   */
+  async flagListing(
+    token: string,
+    refreshToken: string,
+    listingId: number,
+    reason: FlagReason,
+    details?: string,
+    tokenUpdateCallback?: (newToken: string, newRefreshToken: string) => void,
+  ): Promise<FlagListingResponse> {
+    const validToken = isTokenExpired(token) ? await getValidToken(refreshToken) : token
+    if (!validToken) {
+      throw new Error("Authentication required")
+    }
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/flag/${listingId}`
+    const body: FlagListingRequest = {
+      listing_id: listingId,
+      reason,
+      details,
+    }
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      })
+
+    const response = await makeRequest()
+
+    if (response.status === 401) {
+      // Token expired, refresh and retry
+      const newToken = await getValidToken(refreshToken)
+      if (!newToken) {
+        throw new Error("Authentication failed")
+      }
+      const retryResponse = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${newToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      })
+      return handleResponse<FlagListingResponse>(
+        retryResponse,
+        refreshToken,
+        tokenUpdateCallback || undefined,
+        async () => {
+          const retryToken = await getValidToken(refreshToken)
+          return fetch(url, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${retryToken || newToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+          })
+        },
+      )
+    }
+
+    return handleResponse<FlagListingResponse>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        })
+      },
+    )
   },
 }

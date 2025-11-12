@@ -37,12 +37,15 @@ func Routes(h *Handlers, orchReqId string) *chi.Mux {
 
 	r.Group(func(r chi.Router) {
 		r.Use(userRoleProtected)
+		// Specific routes should come before parameterized routes
+		r.Get("/flagged", h.GetFlaggedListingsHandler)
 		r.Get("/user-lists/", h.GetUserListsHandler)
 		r.Post("/create", h.CreateHandler)
+		r.Post("/upload", h.UploadUserMedia)
+		r.Post("/flag/{id}", h.FlagListingHandler)
 		r.Patch("/update/{id}", h.UpdateHandler)
 		r.Delete("/delete/{id}", h.DeleteHandler)
 		r.Post("/add-media-url/{id}", h.AddMediaURLHandler)
-		r.Post("/upload", h.UploadUserMedia)
 	})
 
 	return r

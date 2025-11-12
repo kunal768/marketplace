@@ -1,0 +1,320 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { Navigation } from "@/components/navigation"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useAuth } from "@/hooks/use-auth"
+import { orchestratorApi } from "@/lib/api/orchestrator"
+import type { FlaggedListing, FlagStatus } from "@/lib/api/types"
+import { AlertCircle, Flag, Clock, User, FileText, ArrowLeft } from "lucide-react"
+import Link from "next/link"
+
+export default function FlaggedListingsPage() {
+  const router = useRouter()
+  const { user, token, isAuthenticated, isHydrated } = useAuth()
+  const [refreshToken, setRefreshToken] = useState<string | null>(null)
+  const [flaggedListings, setFlaggedListings] = useState<FlaggedListing[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<FlagStatus | "ALL">("ALL")
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setRefreshToken(localStorage.getItem("frontend-refreshToken"))
+    }
+  }, [])
+
+  // Check if user is admin and redirect if not
+  useEffect(() => {
+    if (isHydrated) {
+      if (!isAuthenticated) {
+        router.push("/")
+        return
+      }
+      if (user?.role !== "0") {
+        // Not an admin, redirect to home
+        router.push("/home")
+        return
+      }
+    }
+  }, [isHydrated, isAuthenticated, user, router])
+
+  // Fetch flagged listings
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || user?.role !== "0" || !token || !refreshToken) {
+      return
+    }
+
+    const fetchFlaggedListings = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const status = statusFilter === "ALL" ? undefined : statusFilter
+        const response = await orchestratorApi.getFlaggedListings(token, refreshToken, status)
+        // Handle null or undefined response
+        if (response && response.flagged_listings) {
+          setFlaggedListings(Array.isArray(response.flagged_listings) ? response.flagged_listings : [])
+        } else {
+          setFlaggedListings([])
+        }
+      } catch (err) {
+        console.error("Error fetching flagged listings:", err)
+        const errorMessage = err instanceof Error ? err.message : "Failed to fetch flagged listings"
+        setError(errorMessage)
+        setFlaggedListings([]) // Reset to empty array on error
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchFlaggedListings()
+  }, [isHydrated, isAuthenticated, user, token, refreshToken, statusFilter])
+
+  const getStatusBadgeVariant = (status: FlagStatus) => {
+    switch (status) {
+      case "OPEN":
+        return "destructive"
+      case "UNDER_REVIEW":
+        return "default"
+      case "RESOLVED":
+        return "secondary"
+      case "DISMISSED":
+        return "outline"
+      default:
+        return "secondary"
+    }
+  }
+
+  const getReasonBadgeVariant = (reason: string) => {
+    switch (reason) {
+      case "SPAM":
+        return "destructive"
+      case "SCAM":
+        return "destructive"
+      case "INAPPROPRIATE":
+        return "destructive"
+      case "MISLEADING":
+        return "default"
+      case "OTHER":
+        return "secondary"
+      default:
+        return "secondary"
+    }
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
+
+  const formatPrice = (price: number) => {
+    // Price is stored in cents, convert to dollars
+    if (!price || price === 0) return "$0.00"
+    return `$${(price / 100).toFixed(2)}`
+  }
+
+  if (!isHydrated || loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading flagged listings...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated || user?.role !== "0") {
+    return null // Will redirect
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Navigation />
+
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-8 animate-float-in-up">
+          <div className="flex items-center gap-4 mb-4">
+            <Button asChild variant="ghost" size="sm" className="magnetic-button">
+              <Link href="/admin/dashboard" className="flex items-center gap-2">
+                <ArrowLeft className="h-4 w-4" />
+                Back to Dashboard
+              </Link>
+            </Button>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="mb-2 text-4xl font-bold text-foreground flex items-center gap-2">
+                <Flag className="h-8 w-8" />
+                Flagged Listings
+              </h1>
+              <p className="text-lg text-muted-foreground">Review and manage flagged listings</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as FlagStatus | "ALL")}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Statuses</SelectItem>
+                  <SelectItem value="OPEN">Open</SelectItem>
+                  <SelectItem value="UNDER_REVIEW">Under Review</SelectItem>
+                  <SelectItem value="RESOLVED">Resolved</SelectItem>
+                  <SelectItem value="DISMISSED">Dismissed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2 text-destructive">
+            <AlertCircle className="h-5 w-5" />
+            <p>{error}</p>
+          </div>
+        )}
+
+        {!loading && flaggedListings && flaggedListings.length === 0 ? (
+          <Card className="animate-float-in-up">
+            <CardContent className="py-12 text-center">
+              <Flag className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-lg text-muted-foreground">No flagged listings found</p>
+            </CardContent>
+          </Card>
+        ) : !loading && flaggedListings && flaggedListings.length > 0 ? (
+          <div className="space-y-6">
+            {flaggedListings.map((flagged, index) => (
+              <Card key={flagged.flag_id} className="animate-float-in-up" style={{ animationDelay: `${index * 0.1}s` }}>
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <CardTitle className="text-xl">
+                          <Link
+                            href={`/listing/${flagged.listing.id}`}
+                            className="hover:text-primary transition-colors"
+                          >
+                            {flagged.listing.title}
+                          </Link>
+                        </CardTitle>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        <Badge variant={getStatusBadgeVariant(flagged.status)}>{flagged.status}</Badge>
+                        <Badge variant={getReasonBadgeVariant(flagged.reason)}>{flagged.reason}</Badge>
+                        <Badge variant="outline">{formatPrice(flagged.listing.price)}</Badge>
+                        <Badge variant="outline">{flagged.listing.category}</Badge>
+                      </div>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <div>
+                        <h3 className="font-semibold mb-2 flex items-center gap-2">
+                          <Flag className="h-4 w-4" />
+                          Flag Information
+                        </h3>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-muted-foreground">Flagged:</span>
+                            <span>{formatDate(flagged.flag_created_at)}</span>
+                          </div>
+                          {flagged.reporter_user_id && (
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-muted-foreground">Reporter ID:</span>
+                              <span className="font-mono text-xs">{flagged.reporter_user_id}</span>
+                            </div>
+                          )}
+                          {flagged.details && (
+                            <div className="flex items-start gap-2">
+                              <FileText className="h-4 w-4 text-muted-foreground mt-0.5" />
+                              <div>
+                                <span className="text-muted-foreground">Details:</span>
+                                <p className="mt-1">{flagged.details}</p>
+                              </div>
+                            </div>
+                          )}
+                          {flagged.resolution_notes && (
+                            <div className="flex items-start gap-2">
+                              <FileText className="h-4 w-4 text-muted-foreground mt-0.5" />
+                              <div>
+                                <span className="text-muted-foreground">Resolution Notes:</span>
+                                <p className="mt-1">{flagged.resolution_notes}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <h3 className="font-semibold mb-2">Listing Information</h3>
+                        <div className="space-y-2 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">Listing ID:</span>
+                            <span className="ml-2 font-mono text-xs">{flagged.listing.id}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Seller ID:</span>
+                            <span className="ml-2 font-mono text-xs">{flagged.listing.user_id}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Status:</span>
+                            <Badge variant="outline" className="ml-2">
+                              {flagged.listing.status}
+                            </Badge>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Created:</span>
+                            <span className="ml-2">{formatDate(flagged.listing.created_at)}</span>
+                          </div>
+                          {flagged.listing.description && (
+                            <div>
+                              <span className="text-muted-foreground">Description:</span>
+                              <p className="mt-1 text-sm">{flagged.listing.description}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="pt-4">
+                        <Link href={`/listing/${flagged.listing.id}`}>
+                          <Button variant="outline" className="w-full">
+                            View Listing
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : null}
+
+        {!loading && flaggedListings && flaggedListings.length > 0 && (
+          <div className="mt-6 text-center text-sm text-muted-foreground">
+            Showing {flaggedListings.length} flagged listing{flaggedListings.length !== 1 ? "s" : ""}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+

@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -71,59 +72,106 @@ func (s *Store) GetUserLists(ctx context.Context, user_id string) ([]models.List
 }
 
 func (s *Store) List(ctx context.Context, f *models.ListFilters) ([]models.Listing, error) {
+	hasKeywords := len(f.Keywords) > 0
+
+	// First, prepare all keyword parameters for reuse
+	var keywordArgs []any
+	if hasKeywords {
+		for _, kw := range f.Keywords {
+			keywordPattern := "%" + kw + "%"
+			keywordArgs = append(keywordArgs, keywordPattern, keywordPattern) // One for title, one for description
+		}
+	}
+
+	// Build SELECT clause with keyword score if keywords are present
 	sb := strings.Builder{}
-	sb.WriteString(`SELECT id,title,description,price,category,user_id,status,created_at FROM listings`)
+	var selectFields []string
+	selectFields = append(selectFields, "id", "title", "description", "price", "category", "user_id", "status", "created_at")
+
+	var scoreParts []string
+	paramNum := 1
+
+	if hasKeywords {
+		// Build score calculation: title matches weighted 2x, description matches weighted 1x
+		for i := 0; i < len(f.Keywords); i++ {
+			// Title match (weighted 2x) - uses paramNum
+			scoreParts = append(scoreParts, fmt.Sprintf("CASE WHEN title ILIKE $%d THEN 2 ELSE 0 END", paramNum))
+			paramNum++
+			// Description match (weighted 1x) - uses paramNum
+			scoreParts = append(scoreParts, fmt.Sprintf("CASE WHEN description ILIKE $%d THEN 1 ELSE 0 END", paramNum))
+			paramNum++
+		}
+		scoreExpr := "(" + strings.Join(scoreParts, " + ") + ") AS keyword_score"
+		selectFields = append(selectFields, scoreExpr)
+	}
+
+	sb.WriteString("SELECT " + strings.Join(selectFields, ", ") + " FROM listings")
+
+	// Build WHERE clause
 	var where []string
 	var args []any
-	i := 1
 
-	if len(f.Keywords) > 0 {
-		var words []string
-		temp := strings.Builder{}
-		temp.WriteString("(")
-		for _, kw := range f.Keywords {
-			words = append(words, fmt.Sprintf("(title ILIKE $%d OR description ILIKE $%d)", i, i+1))
-			args = append(args, "%"+kw+"%", "%"+kw+"%")
-			i += 2
+	// Add keyword parameters first (they're already prepared)
+	if hasKeywords {
+		args = append(args, keywordArgs...)
+		// Build WHERE conditions using the same parameters
+		var keywordConditions []string
+		kwParamNum := 1
+		for range f.Keywords {
+			keywordConditions = append(keywordConditions, fmt.Sprintf("(title ILIKE $%d OR description ILIKE $%d)", kwParamNum, kwParamNum+1))
+			kwParamNum += 2
 		}
-		temp.WriteString(strings.Join(words, " OR "))
-		temp.WriteString(")")
-		where = append(where, temp.String())
+		where = append(where, "("+strings.Join(keywordConditions, " OR ")+")")
 	}
+
+	// Add other filters (category, status, price)
+	currentParamNum := len(args) + 1
 
 	if f.Category != nil {
-		where = append(where, fmt.Sprintf("category = $%d", i))
+		where = append(where, fmt.Sprintf("category = $%d", currentParamNum))
 		args = append(args, *f.Category)
-		i++
+		currentParamNum++
 	}
 	if f.Status != nil {
-		where = append(where, fmt.Sprintf("status = $%d", i))
+		where = append(where, fmt.Sprintf("status = $%d", currentParamNum))
 		args = append(args, *f.Status)
-		i++
+		currentParamNum++
 	}
 	if f.MinPrice != nil {
-		where = append(where, fmt.Sprintf("price >= $%d", i))
+		where = append(where, fmt.Sprintf("price >= $%d", currentParamNum))
 		args = append(args, *f.MinPrice)
-		i++
+		currentParamNum++
 	}
 	if f.MaxPrice != nil {
-		where = append(where, fmt.Sprintf("price <= $%d", i))
+		where = append(where, fmt.Sprintf("price <= $%d", currentParamNum))
 		args = append(args, *f.MaxPrice)
-		i++
+		currentParamNum++
 	}
 
 	if len(where) > 0 {
 		sb.WriteString(" WHERE " + strings.Join(where, " AND "))
 	}
 
+	// Build ORDER BY clause
+	// If keywords are present, order by keyword_score DESC first, then by the requested sort
+	// If no keywords, use the requested sort directly
+	var orderBy []string
+	if hasKeywords {
+		// Order by relevance score first (highest first)
+		orderBy = append(orderBy, "keyword_score DESC")
+	}
+
+	// Then apply the requested sort
 	switch f.Sort {
 	case "price_asc":
-		sb.WriteString(" ORDER BY price ASC")
+		orderBy = append(orderBy, "price ASC")
 	case "price_desc":
-		sb.WriteString(" ORDER BY price DESC")
+		orderBy = append(orderBy, "price DESC")
 	default:
-		sb.WriteString(" ORDER BY created_at DESC")
+		orderBy = append(orderBy, "created_at DESC")
 	}
+
+	sb.WriteString(" ORDER BY " + strings.Join(orderBy, ", "))
 
 	if f.Limit <= 0 || f.Limit > 100 {
 		f.Limit = 20
@@ -141,8 +189,16 @@ func (s *Store) List(ctx context.Context, f *models.ListFilters) ([]models.Listi
 	var out []models.Listing
 	for rows.Next() {
 		var l models.Listing
-		if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.Category, &l.UserID, &l.Status, &l.CreatedAt); err != nil {
-			return nil, err
+		if hasKeywords {
+			// Scan includes keyword_score, but we don't need to store it
+			var keywordScore int
+			if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.Category, &l.UserID, &l.Status, &l.CreatedAt, &keywordScore); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.Category, &l.UserID, &l.Status, &l.CreatedAt); err != nil {
+				return nil, err
+			}
 		}
 		out = append(out, l)
 	}
@@ -208,7 +264,7 @@ func (s *Store) Update(ctx context.Context, id int64, userID string, p models.Up
 func (s *Store) Archive(ctx context.Context, id int64, userid string, userRole string) error {
 	var args []any
 	args = append(args, id)
-	
+
 	// Admin can archive any listing, regular user can only archive their own
 	var query string
 	if userRole == string(httplib.ADMIN) {
@@ -217,7 +273,7 @@ func (s *Store) Archive(ctx context.Context, id int64, userid string, userRole s
 		query = `UPDATE listings SET status='ARCHIVED' WHERE id=$1 AND user_id=$2`
 		args = append(args, userid)
 	}
-	
+
 	_, err := s.P.Exec(ctx, query, args...)
 	return err
 }
@@ -225,7 +281,7 @@ func (s *Store) Archive(ctx context.Context, id int64, userid string, userRole s
 func (s *Store) Delete(ctx context.Context, id int64, userid string, userRole string) error {
 	var args []any
 	args = append(args, id)
-	
+
 	// Admin can delete any listing, regular user can only delete their own
 	var query string
 	if userRole == string(httplib.ADMIN) {
@@ -234,7 +290,7 @@ func (s *Store) Delete(ctx context.Context, id int64, userid string, userRole st
 		query = `DELETE FROM listings WHERE id=$1 AND user_id=$2`
 		args = append(args, userid)
 	}
-	
+
 	log.Println("Testing Delete Query: ", common.FormatQuery(query, args))
 	_, err := s.P.Exec(ctx, query, args...)
 	log.Println("Finished Delete Query: ", err)
@@ -291,4 +347,149 @@ func (s *Store) AddMediaUrls(ctx context.Context, listingID int64, userID string
 	}
 
 	return nil
+}
+
+// GetFlaggedListings retrieves all flagged listings with their associated listing details
+// If status is provided, filters by flag status. Otherwise returns all flagged listings.
+func (s *Store) GetFlaggedListings(ctx context.Context, status *string) ([]models.FlaggedListing, error) {
+	query := `
+		SELECT 
+			fl.id,
+			fl.listing_id,
+			fl.reporter_user_id,
+			fl.reason,
+			fl.details,
+			fl.status,
+			fl.reviewer_user_id,
+			fl.resolution_notes,
+			fl.created_at,
+			fl.updated_at,
+			fl.resolved_at,
+			l.id,
+			l.title,
+			l.description,
+			l.price,
+			l.category,
+			l.user_id,
+			l.status,
+			l.created_at
+		FROM flagged_listings fl
+		JOIN listings l ON fl.listing_id = l.id
+	`
+
+	var args []any
+	if status != nil && *status != "" {
+		query += " WHERE fl.status = $1"
+		args = append(args, *status)
+	}
+
+	query += " ORDER BY fl.created_at DESC"
+
+	log.Println("GetFlaggedListings SQL Query: \n", common.FormatQuery(query, args))
+
+	rows, err := s.P.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.FlaggedListing
+	for rows.Next() {
+		var fl models.FlaggedListing
+		var listing models.Listing
+
+		err := rows.Scan(
+			&fl.FlagID,
+			&fl.ListingID,
+			&fl.ReporterUserID,
+			&fl.Reason,
+			&fl.Details,
+			&fl.Status,
+			&fl.ReviewerUserID,
+			&fl.ResolutionNotes,
+			&fl.FlagCreatedAt,
+			&fl.FlagUpdatedAt,
+			&fl.FlagResolvedAt,
+			&listing.ID,
+			&listing.Title,
+			&listing.Description,
+			&listing.Price,
+			&listing.Category,
+			&listing.UserID,
+			&listing.Status,
+			&listing.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan flagged listing: %w", err)
+		}
+
+		fl.Listing = listing
+		out = append(out, fl)
+	}
+
+	return out, rows.Err()
+}
+
+// FlagListing creates a new flag for a listing
+func (s *Store) FlagListing(ctx context.Context, listingID int64, reporterUserID string, p models.CreateFlagParams) (models.FlaggedListing, error) {
+	// First verify the listing exists
+	var listing models.Listing
+	err := s.P.QueryRow(ctx, `SELECT id,title,description,price,category,user_id,status,created_at FROM listings WHERE id=$1`, listingID).
+		Scan(&listing.ID, &listing.Title, &listing.Description, &listing.Price, &listing.Category, &listing.UserID, &listing.Status, &listing.CreatedAt)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return models.FlaggedListing{}, fmt.Errorf("listing not found")
+		}
+		return models.FlaggedListing{}, fmt.Errorf("failed to verify listing: %w", err)
+	}
+
+	// Parse reporter user ID
+	reporterUUID, err := uuid.Parse(reporterUserID)
+	if err != nil {
+		return models.FlaggedListing{}, fmt.Errorf("invalid reporter user ID: %w", err)
+	}
+
+	// Insert the flag into flagged_listings table
+	// Status defaults to 'OPEN' as per database schema
+	const insertFlagQuery = `
+		INSERT INTO flagged_listings (listing_id, reporter_user_id, reason, details, status)
+		VALUES ($1, $2::uuid, $3, $4, 'OPEN')
+		RETURNING id, listing_id, reporter_user_id, reason, details, status, reviewer_user_id, resolution_notes, created_at, updated_at, resolved_at
+	`
+
+	var fl models.FlaggedListing
+	err = s.P.QueryRow(ctx, insertFlagQuery, listingID, reporterUUID, p.Reason, p.Details).
+		Scan(
+			&fl.FlagID,
+			&fl.ListingID,
+			&fl.ReporterUserID,
+			&fl.Reason,
+			&fl.Details,
+			&fl.Status,
+			&fl.ReviewerUserID,
+			&fl.ResolutionNotes,
+			&fl.FlagCreatedAt,
+			&fl.FlagUpdatedAt,
+			&fl.FlagResolvedAt,
+		)
+	if err != nil {
+		return models.FlaggedListing{}, fmt.Errorf("failed to create flag: %w", err)
+	}
+
+	// Update listing status to REPORTED when flagged
+	// Always update status to REPORTED regardless of current status
+	_, err = s.P.Exec(ctx, `UPDATE listings SET status='REPORTED' WHERE id=$1`, listingID)
+	if err != nil {
+		log.Printf("Warning: Failed to update listing status to REPORTED: %v", err)
+		// Don't fail the flag creation if status update fails
+	} else {
+		// Update the local listing status for the response
+		listing.Status = models.StReported
+	}
+
+	// Set the listing information
+	fl.Listing = listing
+
+	log.Println("Flag created successfully for listing:", listingID)
+	return fl, nil
 }

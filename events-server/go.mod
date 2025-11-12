@@ -2,11 +2,14 @@ module github.com/kunal768/cmpe202/events-server
 
 go 1.23.0
 
+replace github.com/kunal768/cmpe202/http-lib => ../http-lib
+
 require (
 	github.com/gobwas/ws v1.4.0
 	github.com/joho/godotenv v1.5.1
 	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/redis/go-redis/v9 v9.14.1
+	github.com/kunal768/cmpe202/http-lib v0.0.0
 )
 
 require (

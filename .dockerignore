@@ -1,0 +1,9 @@
+pnpm-workspace.yaml
+frontend/pnpm-workspace.yaml
+**/node_modules
+frontend/.next
+frontend/out
+frontend/dist
+.git
+Dockerfile
+docker-compose.yml

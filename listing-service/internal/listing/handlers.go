@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	httplib "github.com/kunal768/cmpe202/http-lib"
 	"github.com/kunal768/cmpe202/listing-service/internal/blob"
 	"github.com/kunal768/cmpe202/listing-service/internal/common"
 	"github.com/kunal768/cmpe202/listing-service/internal/gemini"
@@ -325,4 +326,107 @@ func (h *Handlers) UploadUserMedia(w http.ResponseWriter, r *http.Request) {
 	} else {
 		platform.Error(w, http.StatusBadRequest, "No valid file metadata was processed.")
 	}
+}
+
+// GetFlaggedListingsHandler handles getting all flagged listings (admin only)
+func (h *Handlers) GetFlaggedListingsHandler(w http.ResponseWriter, r *http.Request) {
+	// Validate user is authenticated and get role
+	_, userRole, err := common.ValidateUserAndRoleAuthWithRole(w, r)
+	if err != nil {
+		return
+	}
+
+	// Check if user is admin
+	if userRole != string(httplib.ADMIN) {
+		platform.Error(w, http.StatusForbidden, "admin access required")
+		return
+	}
+
+	// Get optional status filter from query parameter
+	var statusFilter *string
+	if status := r.URL.Query().Get("status"); status != "" {
+		statusFilter = &status
+	}
+
+	// Fetch flagged listings from repository
+	flaggedListings, err := h.S.GetFlaggedListings(r.Context(), statusFilter)
+	if err != nil {
+		log.Printf("Error fetching flagged listings: %v", err)
+		platform.Error(w, http.StatusInternalServerError, "failed to fetch flagged listings")
+		return
+	}
+
+	platform.JSON(w, http.StatusOK, flaggedListings)
+}
+
+// FlagListingHandler handles flagging a listing
+func (h *Handlers) FlagListingHandler(w http.ResponseWriter, r *http.Request) {
+	// Validate user is authenticated
+	userID, err := common.ValidateUserAndRoleAuth(w, r)
+	if err != nil {
+		return
+	}
+
+	// Get listing ID from URL path
+	listingIDStr := chi.URLParam(r, "id")
+	if listingIDStr == "" {
+		platform.Error(w, http.StatusBadRequest, "listing ID is required")
+		return
+	}
+
+	listingID, err := strconv.ParseInt(listingIDStr, 10, 64)
+	if err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid listing ID")
+		return
+	}
+
+	// Decode request body
+	var req models.CreateFlagParams
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validate request
+	if req.Reason == "" {
+		platform.Error(w, http.StatusBadRequest, "reason is required")
+		return
+	}
+
+	// Validate reason is one of the allowed values
+	validReasons := []models.FlagReason{
+		models.FlagReasonSpam,
+		models.FlagReasonScam,
+		models.FlagReasonInappropriate,
+		models.FlagReasonMisleading,
+		models.FlagReasonOther,
+	}
+	validReason := false
+	for _, r := range validReasons {
+		if req.Reason == r {
+			validReason = true
+			break
+		}
+	}
+	if !validReason {
+		platform.Error(w, http.StatusBadRequest, "invalid reason")
+		return
+	}
+
+	// Set listing ID from URL parameter
+	req.ListingID = listingID
+
+	// Create the flag
+	flaggedListing, err := h.S.FlagListing(r.Context(), listingID, userID, req)
+	if err != nil {
+		log.Printf("Error flagging listing: %v", err)
+		if err.Error() == "listing not found" {
+			platform.Error(w, http.StatusNotFound, "listing not found")
+			return
+		}
+		platform.Error(w, http.StatusInternalServerError, "failed to flag listing")
+		return
+	}
+
+	platform.JSON(w, http.StatusCreated, flaggedListing)
 }

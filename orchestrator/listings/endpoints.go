@@ -401,6 +401,126 @@ func (e *Endpoints) ChatSearchHandler(w http.ResponseWriter, r *http.Request) {
 	httplib.WriteJSON(w, http.StatusOK, response)
 }
 
+// GetFlaggedListingsHandler handles getting flagged listings (admin only)
+func (e *Endpoints) GetFlaggedListingsHandler(w http.ResponseWriter, r *http.Request) {
+	req := FetchFlaggedListingsRequest{}
+
+	// Parse optional status filter from query parameter
+	if status := r.URL.Query().Get("status"); status != "" {
+		st := FlagStatus(status)
+		req.Status = &st
+	}
+
+	// Call service (service will validate admin role)
+	response, err := e.service.FetchFlaggedListings(r.Context(), req)
+	if err != nil {
+		// Check if error is due to admin access requirement
+		if err.Error() == "admin access required" {
+			httplib.WriteJSON(w, http.StatusForbidden, ErrorResponse{
+				Error:   "Forbidden",
+				Message: "Admin access required",
+			})
+			return
+		}
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to fetch flagged listings",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, response)
+}
+
+// FlagListingHandler handles flagging a listing
+func (e *Endpoints) FlagListingHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract ID from URL path using PathValue (Go 1.22+)
+	listingIDStr := r.PathValue("id")
+	if listingIDStr == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Listing ID is required",
+		})
+		return
+	}
+
+	listingID, err := strconv.ParseInt(listingIDStr, 10, 64)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Invalid listing ID format",
+		})
+		return
+	}
+
+	var flagReq struct {
+		Reason  FlagReason `json:"reason"`
+		Details *string    `json:"details,omitempty"`
+	}
+
+	// Decode request body
+	if err := json.NewDecoder(r.Body).Decode(&flagReq); err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request body",
+			Message: "Failed to decode request body",
+		})
+		return
+	}
+
+	// Validate request
+	if flagReq.Reason == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Validation error",
+			Message: "Reason is required",
+		})
+		return
+	}
+
+	req := FlagListingRequest{
+		ListingID: listingID,
+		Reason:    flagReq.Reason,
+		Details:   flagReq.Details,
+	}
+
+	// Call service (context should have userID and role from middleware)
+	response, err := e.service.FlagListing(r.Context(), req)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to flag listing",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	httplib.WriteJSON(w, http.StatusCreated, response)
+}
+
+// adminOnlyMiddleware checks if the user has admin role
+func adminOnlyMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		roleVal := ctx.Value(httplib.ContextKey("userRole"))
+		if roleVal == nil {
+			httplib.WriteJSON(w, http.StatusForbidden, ErrorResponse{
+				Error:   "Forbidden",
+				Message: "Admin access required",
+			})
+			return
+		}
+
+		role, ok := roleVal.(string)
+		if !ok || role != string(httplib.ADMIN) {
+			httplib.WriteJSON(w, http.StatusForbidden, ErrorResponse{
+				Error:   "Forbidden",
+				Message: "Admin access required",
+			})
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 // RegisterRoutes registers all listing routes with proper middleware
 func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 	// Default protected chain: JSON -> Auth -> Role
@@ -408,6 +528,17 @@ func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 		return httplib.AuthMiddleWare(
 			httplib.RoleInjectionMiddleWare(dbPool)(
 				httplib.JSONRequestDecoder(h),
+			),
+		)
+	}
+
+	// Admin-only protected chain: JSON -> Auth -> Role -> Admin Check
+	adminProtected := func(h http.Handler) http.Handler {
+		return httplib.AuthMiddleWare(
+			httplib.RoleInjectionMiddleWare(dbPool)(
+				adminOnlyMiddleware(
+					httplib.JSONRequestDecoder(h),
+				),
 			),
 		)
 	}
@@ -426,6 +557,10 @@ func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 		httplib.RoleInjectionMiddleWare(dbPool)(http.HandlerFunc(e.UploadMediaHandler)),
 	))
 	mux.Handle("POST /api/listings/add-media-url/{id}", protected(http.HandlerFunc(e.AddMediaURLHandler)))
+	mux.Handle("POST /api/listings/flag/{id}", protected(http.HandlerFunc(e.FlagListingHandler)))
+
+	// Admin-only routes
+	mux.Handle("GET /api/listings/flagged", adminProtected(http.HandlerFunc(e.GetFlaggedListingsHandler)))
 }
 
 // validateCreateListingRequest validates create listing request

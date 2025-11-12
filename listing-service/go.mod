@@ -2,6 +2,8 @@ module github.com/kunal768/cmpe202/listing-service
 
 go 1.23.0
 
+replace github.com/kunal768/cmpe202/http-lib => ../http-lib
+
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.0
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.3
@@ -9,6 +11,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/joho/godotenv v1.5.1
+	github.com/kunal768/cmpe202/http-lib v0.0.0
 )
 
 require (
@@ -27,3 +30,4 @@ require (
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 )
+

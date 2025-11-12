@@ -51,3 +51,63 @@ export interface ErrorResponse {
   message: string
 }
 
+export interface Listing {
+  id: number
+  title: string
+  description?: string
+  price: number
+  category: string
+  user_id: string
+  status: string
+  created_at: string
+}
+
+export type FlagReason = "SPAM" | "SCAM" | "INAPPROPRIATE" | "MISLEADING" | "OTHER"
+export type FlagStatus = "OPEN" | "UNDER_REVIEW" | "RESOLVED" | "DISMISSED"
+
+export interface FlaggedListing {
+  flag_id: number
+  listing_id: number
+  reporter_user_id?: string
+  reason: FlagReason
+  details?: string
+  status: FlagStatus
+  reviewer_user_id?: string
+  resolution_notes?: string
+  flag_created_at: string
+  flag_updated_at: string
+  flag_resolved_at?: string
+  listing: Listing
+}
+
+export interface FetchFlaggedListingsResponse {
+  flagged_listings: FlaggedListing[]
+  count: number
+}
+
+export interface FetchAllListingsRequest {
+  keywords?: string
+  category?: string
+  status?: string
+  min_price?: number
+  max_price?: number
+  limit?: number
+  offset?: number
+  sort?: string
+}
+
+export interface FetchAllListingsResponse {
+  items: Listing[]
+  count: number
+}
+
+export interface FlagListingRequest {
+  listing_id: number
+  reason: FlagReason
+  details?: string
+}
+
+export interface FlagListingResponse {
+  flagged_listing: FlaggedListing
+}
+

@@ -35,6 +35,8 @@ type Service interface {
 	UploadMedia(ctx context.Context, r *http.Request, listingID *int64) (*UploadMediaResponse, error)
 	AddMediaURL(ctx context.Context, req AddMediaURLRequest) (*AddMediaURLResponse, error)
 	ChatSearch(ctx context.Context, req ChatSearchRequest) (*ChatSearchResponse, error)
+	FetchFlaggedListings(ctx context.Context, req FetchFlaggedListingsRequest) (*FetchFlaggedListingsResponse, error)
+	FlagListing(ctx context.Context, req FlagListingRequest) (*FlagListingResponse, error)
 }
 
 func NewListingService(baseUrl string, sharedSecret string) Service {
@@ -508,4 +510,112 @@ func (s *svc) ChatSearch(ctx context.Context, req ChatSearchRequest) (*ChatSearc
 	}
 
 	return &ChatSearchResponse{Listings: listings}, nil
+}
+
+func (s *svc) FetchFlaggedListings(ctx context.Context, req FetchFlaggedListingsRequest) (*FetchFlaggedListingsResponse, error) {
+	// Extract and validate user role - must be admin
+	userID, roleID, err := s.extractUserAndRole(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if user is admin
+	if roleID != string(httplib.ADMIN) {
+		return nil, fmt.Errorf("admin access required")
+	}
+
+	// Build URL with optional status filter
+	fullURL := s.config.URL + "/listings/flagged"
+	u, err := url.Parse(fullURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse URL: %w", err)
+	}
+
+	if req.Status != nil {
+		q := u.Query()
+		q.Set("status", string(*req.Status))
+		u.RawQuery = q.Encode()
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Forward user ID and role ID headers
+	httpReq.Header.Set("X-User-ID", userID)
+	httpReq.Header.Set("X-Role-ID", roleID)
+
+	resp, err := s.config.Client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var flaggedListings []FlaggedListing
+	if err := json.NewDecoder(resp.Body).Decode(&flaggedListings); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &FetchFlaggedListingsResponse{
+		FlaggedListings: flaggedListings,
+		Count:           len(flaggedListings),
+	}, nil
+}
+
+func (s *svc) FlagListing(ctx context.Context, req FlagListingRequest) (*FlagListingResponse, error) {
+	// Extract and validate user authentication
+	userID, roleID, err := s.extractUserAndRole(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build request body
+	reqBody := struct {
+		Reason  FlagReason `json:"reason"`
+		Details *string    `json:"details,omitempty"`
+	}{
+		Reason:  req.Reason,
+		Details: req.Details,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	fullURL := fmt.Sprintf("%s/listings/flag/%d", s.config.URL, req.ListingID)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", fullURL, bytes.NewBuffer(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-User-ID", userID)
+	httpReq.Header.Set("X-Role-ID", roleID)
+
+	resp, err := s.config.Client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var flaggedListing FlaggedListing
+	if err := json.NewDecoder(resp.Body).Decode(&flaggedListing); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &FlagListingResponse{
+		FlaggedListing: flaggedListing,
+	}, nil
 }
