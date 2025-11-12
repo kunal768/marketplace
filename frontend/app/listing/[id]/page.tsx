@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter, useParams } from "next/navigation"
 import { Navigation } from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,69 +10,77 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import {
   MessageSquare,
-  MapPin,
   Clock,
-  Star,
   ChevronLeft,
   ChevronRight,
   Heart,
   Share2,
   Flag,
-  Package,
   Shield,
+  AlertCircle,
 } from "lucide-react"
 import Link from "next/link"
-
-// Mock listing data
-const listing = {
-  id: 1,
-  title: "Calculus Textbook - 8th Edition",
-  price: 45,
-  images: ["/calculus-textbook.png", "/textbook-spine.jpg", "/textbook-pages.jpg", "/textbook-back-cover.jpg"],
-  category: "Textbooks",
-  condition: "Like New",
-  description:
-    "Calculus: Early Transcendentals, 8th Edition by James Stewart. Used for one semester, in excellent condition with minimal highlighting. All pages intact, no water damage or torn pages. Perfect for MATH 141/142 courses.",
-  location: "Main Library",
-  seller: {
-    name: "Sarah Martinez",
-    avatar: "/placeholder.svg?height=100&width=100",
-    rating: 4.8,
-    totalSales: 23,
-    joinedDate: "Jan 2024",
-    responseTime: "Usually responds within 2 hours",
-  },
-  postedDate: "2 hours ago",
-  views: 47,
-}
-
-const relatedListings = [
-  {
-    id: 2,
-    title: "Physics Textbook - University Edition",
-    price: 38,
-    image: "/physics-textbook.jpg",
-    condition: "Good",
-  },
-  {
-    id: 3,
-    title: "Chemistry Lab Manual",
-    price: 30,
-    image: "/chemistry-lab-manual.jpg",
-    condition: "Like New",
-  },
-  {
-    id: 4,
-    title: "Statistics Workbook",
-    price: 25,
-    image: "/statistics-workbook.jpg",
-    condition: "Good",
-  },
-]
+import { useAuth } from "@/hooks/use-auth"
+import { orchestratorApi } from "@/lib/api/orchestrator"
+import type { Listing } from "@/lib/api/types"
+import { formatPrice, formatTimeAgo, mapCategoryToDisplay } from "@/lib/utils/listings"
 
 export default function ListingDetailPage() {
+  const router = useRouter()
+  const params = useParams()
+  const { token, isAuthenticated, isHydrated } = useAuth()
+  const [refreshToken, setRefreshToken] = useState<string | null>(null)
+  const [listing, setListing] = useState<Listing | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [isSaved, setIsSaved] = useState(false)
+
+  const listingId = params?.id ? parseInt(params.id as string, 10) : null
+
+  // Get refresh token from localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setRefreshToken(localStorage.getItem("frontend-refreshToken"))
+    }
+  }, [])
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (isHydrated && !isAuthenticated) {
+      router.push("/")
+    }
+  }, [isHydrated, isAuthenticated, router])
+
+  // Fetch listing by ID
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token || !refreshToken || !listingId || isNaN(listingId)) {
+      return
+    }
+
+    const fetchListing = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const data = await orchestratorApi.getListingById(token, refreshToken, listingId)
+        setListing(data)
+      } catch (err) {
+        console.error("Error fetching listing:", err)
+        const errorMessage = err instanceof Error ? err.message : "Failed to fetch listing"
+        setError(errorMessage)
+        if (errorMessage === "Listing not found") {
+          // Handle 404
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchListing()
+  }, [isHydrated, isAuthenticated, token, refreshToken, listingId, router])
+
+  // Use placeholder images (media URLs not in response yet)
+  const images = listing ? ["/placeholder.svg"] : []
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -90,14 +99,59 @@ export default function ListingDetailPage() {
     })
 
     return () => observer.disconnect()
-  }, [])
+  }, [listing])
 
   const nextImage = () => {
-    setCurrentImageIndex((prev) => (prev + 1) % listing.images.length)
+    setCurrentImageIndex((prev) => (prev + 1) % images.length)
   }
 
   const prevImage = () => {
-    setCurrentImageIndex((prev) => (prev - 1 + listing.images.length) % listing.images.length)
+    setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length)
+  }
+
+  // Show loading state
+  if (!isHydrated || loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading listing...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show error state
+  if (error || !listing) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <Card className="max-w-md w-full">
+              <CardContent className="py-12 text-center">
+                <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+                <h2 className="text-2xl font-bold mb-2">Listing Not Found</h2>
+                <p className="text-muted-foreground mb-6">
+                  {error || "The listing you're looking for doesn't exist or has been removed."}
+                </p>
+                <div className="flex gap-4 justify-center">
+                  <Button variant="outline" onClick={() => router.push("/listings")}>
+                    Browse Listings
+                  </Button>
+                  <Button onClick={() => router.back()}>Go Back</Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -111,11 +165,11 @@ export default function ListingDetailPage() {
             <Card className="mb-6 overflow-hidden premium-card animate-scale-in-bounce">
               <div className="relative aspect-square bg-muted">
                 <img
-                  src={listing.images[currentImageIndex] || "/placeholder.svg"}
+                  src={images[currentImageIndex] || "/placeholder.svg"}
                   alt={listing.title}
                   className="h-full w-full object-cover transition-transform duration-700"
                 />
-                {listing.images.length > 1 && (
+                {images.length > 1 && (
                   <>
                     <Button
                       variant="secondary"
@@ -134,7 +188,7 @@ export default function ListingDetailPage() {
                       <ChevronRight className="h-5 w-5" />
                     </Button>
                     <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
-                      {listing.images.map((_, index) => (
+                      {images.map((_, index) => (
                         <button
                           key={index}
                           className={`h-2 rounded-full transition-all duration-300 ${
@@ -147,9 +201,9 @@ export default function ListingDetailPage() {
                   </>
                 )}
               </div>
-              {listing.images.length > 1 && (
+              {images.length > 1 && (
                 <div className="grid grid-cols-4 gap-2 p-4">
-                  {listing.images.map((image, index) => (
+                  {images.map((image, index) => (
                     <button
                       key={index}
                       className={`aspect-square overflow-hidden rounded-xl border-2 transition-all duration-300 hover:scale-105 ${
@@ -173,7 +227,9 @@ export default function ListingDetailPage() {
                 <CardTitle className="text-2xl">Description</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-foreground leading-relaxed text-lg">{listing.description}</p>
+                <p className="text-foreground leading-relaxed text-lg">
+                  {listing.description || "No description provided."}
+                </p>
               </CardContent>
             </Card>
 
@@ -214,34 +270,33 @@ export default function ListingDetailPage() {
                 <CardContent className="p-6">
                   <div className="mb-6">
                     <div className="mb-3 flex items-center justify-between">
-                      <span className="text-4xl font-bold text-primary">${listing.price}</span>
+                      <span className="text-4xl font-bold text-primary">{formatPrice(listing.price)}</span>
                       <Badge variant="secondary" className="text-base px-3 py-1">
-                        {listing.condition}
+                        {listing.status}
                       </Badge>
                     </div>
                     <h1 className="mb-3 text-2xl font-bold text-foreground text-balance">{listing.title}</h1>
-                    <Badge className="text-sm">{listing.category}</Badge>
+                    <Badge className="text-sm">{mapCategoryToDisplay(listing.category)}</Badge>
                   </div>
 
                   <Separator className="my-6" />
 
                   <div className="mb-6 space-y-3 text-base">
                     <div className="flex items-center gap-3 text-muted-foreground">
-                      <MapPin className="h-5 w-5 text-primary" />
-                      <span>{listing.location}</span>
-                    </div>
-                    <div className="flex items-center gap-3 text-muted-foreground">
                       <Clock className="h-5 w-5 text-primary" />
-                      <span>Posted {listing.postedDate}</span>
+                      <span>Posted {formatTimeAgo(listing.created_at)}</span>
                     </div>
                     <div className="flex items-center gap-3 text-muted-foreground">
-                      <Package className="h-5 w-5 text-primary" />
-                      <span>{listing.views} views</span>
+                      <span className="text-xs font-mono">ID: {listing.id}</span>
                     </div>
                   </div>
 
                   <div className="space-y-3">
-                    <Button className="w-full h-14 text-base font-semibold magnetic-button" size="lg">
+                    <Button
+                      className="w-full h-14 text-base font-semibold magnetic-button"
+                      size="lg"
+                      onClick={() => router.push(`/messages?user=${listing.user_id}`)}
+                    >
                       <MessageSquare className="mr-2 h-5 w-5" />
                       Contact Seller
                     </Button>
@@ -271,27 +326,23 @@ export default function ListingDetailPage() {
                 <CardContent>
                   <div className="mb-4 flex items-center gap-4">
                     <Avatar className="h-14 w-14 ring-2 ring-primary/20">
-                      <AvatarImage src={listing.seller.avatar || "/placeholder.svg"} />
-                      <AvatarFallback className="text-lg">SM</AvatarFallback>
+                      <AvatarImage src="/placeholder.svg" />
+                      <AvatarFallback className="text-lg">
+                        {listing.user_id.substring(0, 2).toUpperCase()}
+                      </AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
-                      <h3 className="font-semibold text-foreground text-lg">{listing.seller.name}</h3>
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                        <span className="font-semibold">{listing.seller.rating}</span>
-                        <span>•</span>
-                        <span>{listing.seller.totalSales} sales</span>
-                      </div>
+                      <h3 className="font-semibold text-foreground text-lg">Seller</h3>
+                      <p className="text-sm text-muted-foreground font-mono truncate">{listing.user_id}</p>
                     </div>
                   </div>
 
-                  <div className="space-y-2 text-sm text-muted-foreground mb-4">
-                    <p>Joined {listing.seller.joinedDate}</p>
-                    <p className="text-primary font-medium">{listing.seller.responseTime}</p>
-                  </div>
-
-                  <Button asChild variant="outline" className="w-full h-12 magnetic-button bg-transparent">
-                    <Link href={`/profile/${listing.seller.name}`}>View Profile</Link>
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="w-full h-12 magnetic-button bg-transparent"
+                  >
+                    <Link href={`/profile`}>View Profile</Link>
                   </Button>
                 </CardContent>
               </Card>
@@ -307,31 +358,6 @@ export default function ListingDetailPage() {
           </div>
         </div>
 
-        <div className="mt-16">
-          <h2 className="mb-8 text-3xl font-bold text-foreground scroll-reveal">Similar Listings</h2>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {relatedListings.map((item, index) => (
-              <Link key={item.id} href={`/listing/${item.id}`}>
-                <Card className={`overflow-hidden premium-card cursor-pointer scroll-reveal stagger-${index + 1}`}>
-                  <div className="aspect-square overflow-hidden bg-muted">
-                    <img
-                      src={item.image || "/placeholder.svg"}
-                      alt={item.title}
-                      className="h-full w-full object-cover transition-transform duration-500 hover:scale-110"
-                    />
-                  </div>
-                  <CardContent className="p-5">
-                    <h3 className="mb-3 font-semibold text-foreground line-clamp-2 text-lg">{item.title}</h3>
-                    <div className="flex items-center justify-between">
-                      <span className="text-2xl font-bold text-primary">${item.price}</span>
-                      <Badge variant="secondary">{item.condition}</Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   )

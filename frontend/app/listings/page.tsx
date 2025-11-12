@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { Navigation } from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
@@ -11,103 +12,99 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Slider } from "@/components/ui/slider"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { Search, SlidersHorizontal, Clock, X } from "lucide-react"
+import { Search, SlidersHorizontal, Clock, X, AlertCircle } from "lucide-react"
 import Link from "next/link"
+import { useAuth } from "@/hooks/use-auth"
+import { orchestratorApi } from "@/lib/api/orchestrator"
+import type { Listing } from "@/lib/api/types"
+import {
+  formatPrice,
+  formatTimeAgo,
+  mapCategoryToDisplay,
+  mapDisplayToCategory,
+  getDisplayCategories,
+  dollarsToCents,
+  mapSortToBackend,
+  getSortOptions,
+  mapDisplayToStatus,
+  mapStatusToDisplay,
+  getDisplayStatuses,
+  type DisplayStatus,
+} from "@/lib/utils/listings"
 
-// Mock listings data
-const allListings = [
-  {
-    id: 1,
-    title: "Calculus Textbook - 8th Edition",
-    price: 45,
-    image: "/calculus-textbook.png",
-    category: "Textbooks",
-    condition: "Like New",
-    seller: "Sarah M.",
-    timeAgo: "2h ago",
-  },
-  {
-    id: 2,
-    title: "MacBook Pro 2020 - 13 inch",
-    price: 850,
-    image: "/macbook-pro-laptop.png",
-    category: "Electronics",
-    condition: "Good",
-    seller: "Mike T.",
-    timeAgo: "5h ago",
-  },
-  {
-    id: 3,
-    title: "Mini Fridge - Perfect for Dorm",
-    price: 75,
-    image: "/mini-fridge.jpg",
-    category: "Furniture",
-    condition: "Excellent",
-    seller: "Emma L.",
-    timeAgo: "1d ago",
-  },
-  {
-    id: 4,
-    title: "University Hoodie - Size M",
-    price: 25,
-    image: "/university-hoodie.jpg",
-    category: "Clothing",
-    condition: "Like New",
-    seller: "Alex K.",
-    timeAgo: "3h ago",
-  },
-  {
-    id: 5,
-    title: "Chemistry Lab Manual",
-    price: 30,
-    image: "/chemistry-lab-manual.jpg",
-    category: "Textbooks",
-    condition: "Good",
-    seller: "Jordan P.",
-    timeAgo: "6h ago",
-  },
-  {
-    id: 6,
-    title: "Desk Lamp with USB Port",
-    price: 20,
-    image: "/modern-desk-lamp.png",
-    category: "Furniture",
-    condition: "Excellent",
-    seller: "Taylor R.",
-    timeAgo: "4h ago",
-  },
-  {
-    id: 7,
-    title: "iPhone 13 - 128GB",
-    price: 450,
-    image: "/iphone-13.jpg",
-    category: "Electronics",
-    condition: "Good",
-    seller: "Chris B.",
-    timeAgo: "8h ago",
-  },
-  {
-    id: 8,
-    title: "Biology Textbook Bundle",
-    price: 65,
-    image: "/biology-textbook.jpg",
-    category: "Textbooks",
-    condition: "Like New",
-    seller: "Morgan S.",
-    timeAgo: "12h ago",
-  },
-]
-
-const categories = ["All", "Textbooks", "Electronics", "Clothing", "Furniture", "Sports", "Other"]
-const conditions = ["New", "Like New", "Good", "Fair"]
+const categories = getDisplayCategories()
 
 export default function ListingsPage() {
+  const router = useRouter()
+  const { token, isAuthenticated, isHydrated } = useAuth()
+  const [refreshToken, setRefreshToken] = useState<string | null>(null)
+  const [listings, setListings] = useState<Listing[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
-  const [selectedConditions, setSelectedConditions] = useState<string[]>([])
   const [priceRange, setPriceRange] = useState([0, 1000])
+  const [debouncedPriceRange, setDebouncedPriceRange] = useState([0, 1000])
+  const [statusFilter, setStatusFilter] = useState<DisplayStatus>("Available")
   const [sortBy, setSortBy] = useState("recent")
+  const [totalCount, setTotalCount] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const [offset, setOffset] = useState(0)
+  const LISTINGS_PER_PAGE = 20
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const hasMoreRef = useRef(true)
+  const loadingMoreRef = useRef(false)
+  const loadingRef = useRef(false)
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Keep refs in sync with state
+  useEffect(() => {
+    hasMoreRef.current = hasMore
+  }, [hasMore])
+
+  useEffect(() => {
+    loadingMoreRef.current = loadingMore
+  }, [loadingMore])
+
+  useEffect(() => {
+    loadingRef.current = loading
+  }, [loading])
+
+  // Get refresh token from localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setRefreshToken(localStorage.getItem("frontend-refreshToken"))
+    }
+  }, [])
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (isHydrated && !isAuthenticated) {
+      router.push("/")
+    }
+  }, [isHydrated, isAuthenticated, router])
+
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery)
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  // Debounce price range changes to avoid too many API calls while dragging
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedPriceRange(priceRange)
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [priceRange])
+
+  // Intersection observer for animations
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -125,7 +122,287 @@ export default function ListingsPage() {
     })
 
     return () => observer.disconnect()
-  }, [])
+  }, [listings])
+
+  // Build filter object
+  const buildFilters = useCallback(
+    (currentOffset: number) => {
+      const filters: {
+        keywords?: string
+        category?: string
+        status?: string
+        min_price?: number
+        max_price?: number
+        limit?: number
+        offset?: number
+        sort?: string
+      } = {
+        limit: LISTINGS_PER_PAGE,
+        offset: currentOffset,
+      }
+
+      // Add search keywords
+      if (debouncedSearchQuery.trim()) {
+        filters.keywords = debouncedSearchQuery.trim()
+      }
+
+      // Add status filter (only if not "All")
+      if (statusFilter !== "All") {
+        const backendStatus = mapDisplayToStatus(statusFilter)
+        if (backendStatus) {
+          filters.status = backendStatus
+        }
+      }
+
+      // Add category filter (use first selected category, backend doesn't support multiple)
+      if (selectedCategories.length > 0) {
+        const backendCategory = mapDisplayToCategory(selectedCategories[0])
+        filters.category = backendCategory
+      }
+
+      // Add price range filter (convert dollars to cents)
+      if (debouncedPriceRange[0] > 0) {
+        filters.min_price = dollarsToCents(debouncedPriceRange[0])
+      }
+      if (debouncedPriceRange[1] < 1000) {
+        filters.max_price = dollarsToCents(debouncedPriceRange[1])
+      }
+
+      // Add sort
+      const backendSort = mapSortToBackend(sortBy)
+      if (backendSort) {
+        filters.sort = backendSort
+      }
+
+      return filters
+    },
+    [debouncedSearchQuery, selectedCategories, debouncedPriceRange, statusFilter, sortBy],
+  )
+
+  // Fetch initial listings from API (resets the list)
+  const fetchListings = useCallback(async () => {
+    if (!isHydrated || !isAuthenticated || !token || !refreshToken) {
+      return
+    }
+
+    try {
+      setLoading(true)
+      setError(null)
+      setOffset(0)
+      setHasMore(true)
+
+      const filters = buildFilters(0)
+      const response = await orchestratorApi.getAllListings(token, refreshToken, filters)
+
+      if (response && response.items) {
+        const items = Array.isArray(response.items) ? response.items : []
+        setListings(items)
+        setTotalCount(response.count || items.length)
+        
+        // Determine if there are more items:
+        // - If we got exactly LISTINGS_PER_PAGE items, assume there might be more
+        // - If we got fewer, we've reached the end
+        const mightHaveMore = items.length === LISTINGS_PER_PAGE
+        setHasMore(mightHaveMore)
+        
+        // Log for debugging
+        if (process.env.NODE_ENV === "development") {
+          console.log("Initial load:", {
+            itemsLoaded: items.length,
+            requested: LISTINGS_PER_PAGE,
+            hasMore: mightHaveMore,
+            totalCount: response.count || items.length,
+          })
+        }
+      } else {
+        setListings([])
+        setTotalCount(0)
+        setHasMore(false)
+      }
+    } catch (err) {
+      console.error("Error fetching listings:", err)
+      const errorMessage = err instanceof Error ? err.message : "Failed to fetch listings"
+      setError(errorMessage)
+      setListings([])
+      setTotalCount(0)
+      setHasMore(false)
+    } finally {
+      setLoading(false)
+    }
+  }, [isHydrated, isAuthenticated, token, refreshToken, buildFilters])
+
+  // Load more listings (appends to existing list)
+  const loadMoreListings = useCallback(async () => {
+    // Prevent multiple simultaneous calls - use refs for latest values
+    if (!isHydrated || !isAuthenticated || !token || !refreshToken) {
+      return
+    }
+
+    if (loadingMoreRef.current) {
+      return
+    }
+
+    // Don't load if we know there are no more items - use ref for latest value
+    if (!hasMoreRef.current) {
+      return
+    }
+
+    try {
+      setLoadingMore(true)
+      setError(null)
+
+      // Get current listings count for offset
+      const currentOffset = listings.length
+
+      const filters = buildFilters(currentOffset)
+      const response = await orchestratorApi.getAllListings(token, refreshToken, filters)
+
+      if (response && response.items) {
+        const items = Array.isArray(response.items) ? response.items : []
+
+        if (items.length > 0) {
+          // Append new items to existing listings
+          setListings((prev) => {
+            const newListings = [...prev, ...items]
+            
+            // Determine if there are more items
+            // If we got exactly LISTINGS_PER_PAGE items, assume there might be more
+            const mightHaveMore = items.length === LISTINGS_PER_PAGE
+            setHasMore(mightHaveMore)
+            
+            // Log for debugging
+            if (process.env.NODE_ENV === "development") {
+              console.log("Loaded more:", {
+                itemsLoaded: items.length,
+                requested: LISTINGS_PER_PAGE,
+                totalNow: newListings.length,
+                hasMore: mightHaveMore,
+                offset: currentOffset,
+              })
+            }
+            
+            return newListings
+          })
+          setOffset(currentOffset + items.length)
+
+          // Update total count for display
+          setTotalCount((prev) => prev + items.length)
+        } else {
+          // Got empty response, no more items
+          setHasMore(false)
+          if (process.env.NODE_ENV === "development") {
+            console.log("No more items - empty response at offset", currentOffset)
+          }
+        }
+      } else {
+        // No response or no items, assume we've reached the end
+        setHasMore(false)
+      }
+    } catch (err) {
+      console.error("Error loading more listings:", err)
+      const errorMessage = err instanceof Error ? err.message : "Failed to load more listings"
+      setError(errorMessage)
+      // Don't set hasMore to false on error - allow retry
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [isHydrated, isAuthenticated, token, refreshToken, listings.length, buildFilters])
+
+  // Fetch listings when filters change (reset to page 1)
+  useEffect(() => {
+    fetchListings()
+  }, [fetchListings])
+
+  // Store loadMoreListings in a ref to avoid recreating observer
+  const loadMoreListingsRef = useRef(loadMoreListings)
+  useEffect(() => {
+    loadMoreListingsRef.current = loadMoreListings
+  }, [loadMoreListings])
+
+  // Intersection Observer for infinite scroll
+  useEffect(() => {
+    // Don't set up observer during initial load or if no listings
+    if (loading || listings.length === 0) {
+      return
+    }
+
+    const sentinel = sentinelRef.current
+    if (!sentinel) {
+      // Wait a bit for sentinel to be rendered
+      const timeout = setTimeout(() => {
+        if (sentinelRef.current && listings.length > 0 && !loading) {
+          // Retry setup
+        }
+      }, 100)
+      return () => clearTimeout(timeout)
+    }
+
+    // Handler function that uses refs for latest values
+    const handleIntersection = (entries: IntersectionObserverEntry[]) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          // Use refs to get latest values (avoid stale closure)
+          if (hasMoreRef.current && !loadingMoreRef.current && !loadingRef.current) {
+            // Use ref to call latest version of loadMoreListings
+            loadMoreListingsRef.current()
+          }
+          break
+        }
+      }
+    }
+
+    // Create observer
+    const observer = new IntersectionObserver(handleIntersection, {
+      threshold: 0,
+      rootMargin: "800px", // Start loading 800px before reaching the bottom
+    })
+
+    observer.observe(sentinel)
+
+    // Also check immediately if sentinel is already in viewport
+    // This handles the case where there are few listings and sentinel is already visible
+    const checkNow = () => {
+      if (!sentinelRef.current) return
+      
+      const rect = sentinelRef.current.getBoundingClientRect()
+      const windowHeight = window.innerHeight || document.documentElement.clientHeight
+      const distanceFromBottom = rect.top - windowHeight
+      
+      // If sentinel is within 1000px of viewport, trigger load
+      if (distanceFromBottom < 1000 && rect.bottom > -500) {
+        if (hasMoreRef.current && !loadingMoreRef.current && !loadingRef.current) {
+          loadMoreListingsRef.current()
+        }
+      }
+    }
+
+    // Check after a short delay to ensure DOM is ready
+    const initialCheck = setTimeout(checkNow, 300)
+
+    // Also set up a scroll listener as backup
+    const handleScroll = () => {
+      checkNow()
+    }
+
+    // Throttled scroll handler
+    let lastScrollTime = 0
+    const throttledScroll = () => {
+      const now = Date.now()
+      if (now - lastScrollTime < 100) {
+        return
+      }
+      lastScrollTime = now
+      handleScroll()
+    }
+
+    window.addEventListener("scroll", throttledScroll, { passive: true })
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener("scroll", throttledScroll)
+      clearTimeout(initialCheck)
+    }
+  }, [listings.length, loading]) // Only depend on listings.length and loading, not loadMoreListings
 
   const toggleCategory = (category: string) => {
     setSelectedCategories((prev) =>
@@ -133,59 +410,48 @@ export default function ListingsPage() {
     )
   }
 
-  const toggleCondition = (condition: string) => {
-    setSelectedConditions((prev) =>
-      prev.includes(condition) ? prev.filter((c) => c !== condition) : [...prev, condition],
-    )
-  }
-
   const clearFilters = () => {
     setSelectedCategories([])
-    setSelectedConditions([])
     setPriceRange([0, 1000])
+    setDebouncedPriceRange([0, 1000])
+    setStatusFilter("Available")
     setSearchQuery("")
+    setSortBy("recent")
   }
 
   const FilterContent = () => (
     <div className="space-y-6">
       <div>
-        <Label className="mb-3 block text-base font-semibold">Category</Label>
-        <div className="space-y-2">
-          {categories
-            .filter((c) => c !== "All")
-            .map((category) => (
-              <div key={category} className="flex items-center space-x-2">
-                <Checkbox
-                  id={`category-${category}`}
-                  checked={selectedCategories.includes(category)}
-                  onCheckedChange={() => toggleCategory(category)}
-                />
-                <label
-                  htmlFor={`category-${category}`}
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                >
-                  {category}
-                </label>
-              </div>
+        <Label className="mb-3 block text-base font-semibold">Status</Label>
+        <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as DisplayStatus)}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select status" />
+          </SelectTrigger>
+          <SelectContent>
+            {getDisplayStatuses().map((status) => (
+              <SelectItem key={status} value={status}>
+                {status}
+              </SelectItem>
             ))}
-        </div>
+          </SelectContent>
+        </Select>
       </div>
 
       <div>
-        <Label className="mb-3 block text-base font-semibold">Condition</Label>
+        <Label className="mb-3 block text-base font-semibold">Category</Label>
         <div className="space-y-2">
-          {conditions.map((condition) => (
-            <div key={condition} className="flex items-center space-x-2">
+          {categories.map((category) => (
+            <div key={category} className="flex items-center space-x-2">
               <Checkbox
-                id={`condition-${condition}`}
-                checked={selectedConditions.includes(condition)}
-                onCheckedChange={() => toggleCondition(condition)}
+                id={`category-${category}`}
+                checked={selectedCategories.includes(category)}
+                onCheckedChange={() => toggleCategory(category)}
               />
               <label
-                htmlFor={`condition-${condition}`}
+                htmlFor={`category-${category}`}
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
               >
-                {condition}
+                {category}
               </label>
             </div>
           ))}
@@ -196,7 +462,20 @@ export default function ListingsPage() {
         <Label className="mb-3 block text-base font-semibold">
           Price Range: ${priceRange[0]} - ${priceRange[1]}
         </Label>
-        <Slider value={priceRange} onValueChange={setPriceRange} max={1000} step={10} className="mt-2" />
+        <div className="mt-4 space-y-2">
+          <Slider
+            value={priceRange}
+            onValueChange={setPriceRange}
+            min={0}
+            max={1000}
+            step={10}
+            className="w-full"
+          />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>$0</span>
+            <span>$1000</span>
+          </div>
+        </div>
       </div>
 
       <Button variant="outline" className="w-full bg-transparent magnetic-button" onClick={clearFilters}>
@@ -232,10 +511,11 @@ export default function ListingsPage() {
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="recent">Most Recent</SelectItem>
-                <SelectItem value="price-low">Price: Low to High</SelectItem>
-                <SelectItem value="price-high">Price: High to Low</SelectItem>
-                <SelectItem value="popular">Most Popular</SelectItem>
+                {getSortOptions().map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Sheet>
@@ -270,8 +550,23 @@ export default function ListingsPage() {
           </aside>
 
           <div className="flex-1">
-            {(selectedCategories.length > 0 || selectedConditions.length > 0) && (
+            {(selectedCategories.length > 0 ||
+              debouncedPriceRange[0] > 0 ||
+              debouncedPriceRange[1] < 1000 ||
+              debouncedSearchQuery ||
+              statusFilter !== "Available") && (
               <div className="mb-6 flex flex-wrap gap-2 animate-float-in-up">
+                {statusFilter !== "Available" && (
+                  <Badge variant="secondary" className="gap-1 px-3 py-1 text-sm">
+                    Status: {statusFilter}
+                    <button
+                      onClick={() => setStatusFilter("Available")}
+                      className="ml-1 hover:text-destructive"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
                 {selectedCategories.map((category) => (
                   <Badge key={category} variant="secondary" className="gap-1 px-3 py-1 text-sm">
                     {category}
@@ -280,59 +575,123 @@ export default function ListingsPage() {
                     </button>
                   </Badge>
                 ))}
-                {selectedConditions.map((condition) => (
-                  <Badge key={condition} variant="secondary" className="gap-1 px-3 py-1 text-sm">
-                    {condition}
-                    <button onClick={() => toggleCondition(condition)} className="ml-1 hover:text-destructive">
+                {debouncedSearchQuery && (
+                  <Badge variant="secondary" className="gap-1 px-3 py-1 text-sm">
+                    Search: {debouncedSearchQuery}
+                    <button
+                      onClick={() => {
+                        setSearchQuery("")
+                        setDebouncedSearchQuery("")
+                      }}
+                      className="ml-1 hover:text-destructive"
+                    >
                       <X className="h-3 w-3" />
                     </button>
                   </Badge>
-                ))}
+                )}
               </div>
             )}
 
-            <div className="mb-6 text-base text-muted-foreground scroll-reveal">
-              <span className="font-semibold text-foreground">8</span> items found
-            </div>
+            {error && (
+              <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2 text-destructive">
+                <AlertCircle className="h-5 w-5" />
+                <p>{error}</p>
+                <Button variant="outline" size="sm" onClick={fetchListings} className="ml-auto">
+                  Retry
+                </Button>
+              </div>
+            )}
 
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
-              {allListings.map((listing, index) => (
-                <Link key={listing.id} href={`/listing/${listing.id}`}>
-                  <Card
-                    className={`overflow-hidden premium-card cursor-pointer h-full scroll-reveal stagger-${(index % 3) + 1}`}
-                  >
-                    <CardHeader className="p-0">
-                      <div className="relative aspect-square overflow-hidden bg-muted">
-                        <img
-                          src={listing.image || "/placeholder.svg"}
-                          alt={listing.title}
-                          className="h-full w-full object-cover transition-transform duration-500 hover:scale-110"
-                        />
-                        <Badge className="absolute right-3 top-3 bg-background/90 text-foreground backdrop-blur-sm">
-                          {listing.category}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="p-5">
-                      <h3 className="mb-3 font-semibold text-lg text-foreground line-clamp-2">{listing.title}</h3>
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-3xl font-bold text-primary">${listing.price}</span>
-                        <Badge variant="secondary" className="text-sm">
-                          {listing.condition}
-                        </Badge>
-                      </div>
-                    </CardContent>
-                    <CardFooter className="flex items-center justify-between border-t border-border p-5 text-sm text-muted-foreground">
-                      <span className="font-medium">{listing.seller}</span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-4 w-4" />
-                        {listing.timeAgo}
-                      </span>
-                    </CardFooter>
-                  </Card>
-                </Link>
-              ))}
-            </div>
+            {loading && listings.length === 0 ? (
+              <div className="flex items-center justify-center min-h-[400px]">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                  <p className="text-muted-foreground">Loading listings...</p>
+                </div>
+              </div>
+            ) : listings.length === 0 ? (
+              <Card className="animate-float-in-up">
+                <CardContent className="py-12 text-center">
+                  <p className="text-lg text-muted-foreground">No listings found</p>
+                  {(selectedCategories.length > 0 ||
+                    debouncedPriceRange[0] > 0 ||
+                    debouncedPriceRange[1] < 1000 ||
+                    debouncedSearchQuery ||
+                    statusFilter !== "Available") && (
+                    <Button variant="outline" onClick={clearFilters} className="mt-4">
+                      Clear Filters
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <div className="mb-6 text-base text-muted-foreground scroll-reveal">
+                  <span className="font-semibold text-foreground">{listings.length}</span> item
+                  {listings.length !== 1 ? "s" : ""} loaded
+                  {hasMore && <span className="text-muted-foreground"> (scroll for more)</span>}
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                  {listings.map((listing, index) => (
+                    <Link key={listing.id} href={`/listing/${listing.id}`}>
+                      <Card
+                        className={`overflow-hidden premium-card cursor-pointer h-full scroll-reveal stagger-${(index % 3) + 1}`}
+                      >
+                        <CardHeader className="p-0">
+                          <div className="relative aspect-square overflow-hidden bg-muted">
+                            <img
+                              src="/placeholder.svg"
+                              alt={listing.title}
+                              className="h-full w-full object-cover transition-transform duration-500 hover:scale-110"
+                            />
+                            <Badge className="absolute right-3 top-3 bg-background/90 text-foreground backdrop-blur-sm">
+                              {mapCategoryToDisplay(listing.category)}
+                            </Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="p-5">
+                          <h3 className="mb-3 font-semibold text-lg text-foreground line-clamp-2">{listing.title}</h3>
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-3xl font-bold text-primary">{formatPrice(listing.price)}</span>
+                            <Badge variant="secondary" className="text-sm">
+                              {listing.status}
+                            </Badge>
+                          </div>
+                        </CardContent>
+                        <CardFooter className="flex items-center justify-between border-t border-border p-5 text-sm text-muted-foreground">
+                          <span className="font-medium text-xs truncate max-w-[120px]">{listing.user_id}</span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-4 w-4" />
+                            {formatTimeAgo(listing.created_at)}
+                          </span>
+                        </CardFooter>
+                      </Card>
+                    </Link>
+                  ))}
+                </div>
+
+                {/* Scroll sentinel for infinite scroll - always render when there are listings */}
+                <div ref={sentinelRef} className="h-10 w-full" />
+
+                {/* Loading more indicator */}
+                {loadingMore && (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                      <p className="text-sm text-muted-foreground">Loading more listings...</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* End of results message */}
+                {!hasMore && listings.length > 0 && (
+                  <div className="py-8 text-center text-muted-foreground">
+                    <p>You've reached the end of the listings.</p>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>

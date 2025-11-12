@@ -85,3 +85,19 @@ export interface FetchFlaggedListingsResponse {
   count: number
 }
 
+export interface FetchAllListingsRequest {
+  keywords?: string
+  category?: string
+  status?: string
+  min_price?: number
+  max_price?: number
+  limit?: number
+  offset?: number
+  sort?: string
+}
+
+export interface FetchAllListingsResponse {
+  items: Listing[]
+  count: number
+}
+

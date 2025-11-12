@@ -9,6 +9,9 @@ import type {
   User,
   FetchFlaggedListingsResponse,
   FlagStatus,
+  FetchAllListingsRequest,
+  FetchAllListingsResponse,
+  Listing,
 } from "./types"
 import { isTokenExpired } from "@/lib/utils/jwt"
 
@@ -389,6 +392,113 @@ export const orchestratorApi = {
         })
         if (retryResponse.status === 404) {
           throw new Error("Flagged listings endpoint not found. Please check if the backend service is running.")
+        }
+        return retryResponse
+      },
+    )
+  },
+
+  async getAllListings(
+    token: string,
+    refreshToken: string | null,
+    filters?: FetchAllListingsRequest,
+  ): Promise<FetchAllListingsResponse> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    // Build query string from filters
+    const params = new URLSearchParams()
+    if (filters?.keywords) {
+      params.set("keywords", filters.keywords)
+    }
+    if (filters?.category) {
+      params.set("category", filters.category)
+    }
+    if (filters?.status) {
+      params.set("status", filters.status)
+    }
+    if (filters?.min_price !== undefined) {
+      params.set("min_price", filters.min_price.toString())
+    }
+    if (filters?.max_price !== undefined) {
+      params.set("max_price", filters.max_price.toString())
+    }
+    if (filters?.limit !== undefined) {
+      params.set("limit", filters.limit.toString())
+    }
+    if (filters?.offset !== undefined) {
+      params.set("offset", filters.offset.toString())
+    }
+    if (filters?.sort) {
+      params.set("sort", filters.sort)
+    }
+
+    const url = `${ORCHESTRATOR_URL}/api/listings${params.toString() ? `?${params.toString()}` : ""}`
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<FetchAllListingsResponse>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+        })
+      },
+    )
+  },
+
+  async getListingById(token: string, refreshToken: string | null, listingId: number): Promise<Listing> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/${listingId}`
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    // Handle 404 specifically for listing not found
+    if (response.status === 404) {
+      throw new Error("Listing not found")
+    }
+
+    // Response format is Listing (embedded field flattens in JSON)
+    return handleResponse<Listing>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        const retryResponse = await fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+        })
+        if (retryResponse.status === 404) {
+          throw new Error("Listing not found")
         }
         return retryResponse
       },

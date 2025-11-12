@@ -71,59 +71,106 @@ func (s *Store) GetUserLists(ctx context.Context, user_id string) ([]models.List
 }
 
 func (s *Store) List(ctx context.Context, f *models.ListFilters) ([]models.Listing, error) {
+	hasKeywords := len(f.Keywords) > 0
+
+	// First, prepare all keyword parameters for reuse
+	var keywordArgs []any
+	if hasKeywords {
+		for _, kw := range f.Keywords {
+			keywordPattern := "%" + kw + "%"
+			keywordArgs = append(keywordArgs, keywordPattern, keywordPattern) // One for title, one for description
+		}
+	}
+
+	// Build SELECT clause with keyword score if keywords are present
 	sb := strings.Builder{}
-	sb.WriteString(`SELECT id,title,description,price,category,user_id,status,created_at FROM listings`)
+	var selectFields []string
+	selectFields = append(selectFields, "id", "title", "description", "price", "category", "user_id", "status", "created_at")
+
+	var scoreParts []string
+	paramNum := 1
+
+	if hasKeywords {
+		// Build score calculation: title matches weighted 2x, description matches weighted 1x
+		for i := 0; i < len(f.Keywords); i++ {
+			// Title match (weighted 2x) - uses paramNum
+			scoreParts = append(scoreParts, fmt.Sprintf("CASE WHEN title ILIKE $%d THEN 2 ELSE 0 END", paramNum))
+			paramNum++
+			// Description match (weighted 1x) - uses paramNum
+			scoreParts = append(scoreParts, fmt.Sprintf("CASE WHEN description ILIKE $%d THEN 1 ELSE 0 END", paramNum))
+			paramNum++
+		}
+		scoreExpr := "(" + strings.Join(scoreParts, " + ") + ") AS keyword_score"
+		selectFields = append(selectFields, scoreExpr)
+	}
+
+	sb.WriteString("SELECT " + strings.Join(selectFields, ", ") + " FROM listings")
+
+	// Build WHERE clause
 	var where []string
 	var args []any
-	i := 1
 
-	if len(f.Keywords) > 0 {
-		var words []string
-		temp := strings.Builder{}
-		temp.WriteString("(")
-		for _, kw := range f.Keywords {
-			words = append(words, fmt.Sprintf("(title ILIKE $%d OR description ILIKE $%d)", i, i+1))
-			args = append(args, "%"+kw+"%", "%"+kw+"%")
-			i += 2
+	// Add keyword parameters first (they're already prepared)
+	if hasKeywords {
+		args = append(args, keywordArgs...)
+		// Build WHERE conditions using the same parameters
+		var keywordConditions []string
+		kwParamNum := 1
+		for range f.Keywords {
+			keywordConditions = append(keywordConditions, fmt.Sprintf("(title ILIKE $%d OR description ILIKE $%d)", kwParamNum, kwParamNum+1))
+			kwParamNum += 2
 		}
-		temp.WriteString(strings.Join(words, " OR "))
-		temp.WriteString(")")
-		where = append(where, temp.String())
+		where = append(where, "("+strings.Join(keywordConditions, " OR ")+")")
 	}
+
+	// Add other filters (category, status, price)
+	currentParamNum := len(args) + 1
 
 	if f.Category != nil {
-		where = append(where, fmt.Sprintf("category = $%d", i))
+		where = append(where, fmt.Sprintf("category = $%d", currentParamNum))
 		args = append(args, *f.Category)
-		i++
+		currentParamNum++
 	}
 	if f.Status != nil {
-		where = append(where, fmt.Sprintf("status = $%d", i))
+		where = append(where, fmt.Sprintf("status = $%d", currentParamNum))
 		args = append(args, *f.Status)
-		i++
+		currentParamNum++
 	}
 	if f.MinPrice != nil {
-		where = append(where, fmt.Sprintf("price >= $%d", i))
+		where = append(where, fmt.Sprintf("price >= $%d", currentParamNum))
 		args = append(args, *f.MinPrice)
-		i++
+		currentParamNum++
 	}
 	if f.MaxPrice != nil {
-		where = append(where, fmt.Sprintf("price <= $%d", i))
+		where = append(where, fmt.Sprintf("price <= $%d", currentParamNum))
 		args = append(args, *f.MaxPrice)
-		i++
+		currentParamNum++
 	}
 
 	if len(where) > 0 {
 		sb.WriteString(" WHERE " + strings.Join(where, " AND "))
 	}
 
+	// Build ORDER BY clause
+	// If keywords are present, order by keyword_score DESC first, then by the requested sort
+	// If no keywords, use the requested sort directly
+	var orderBy []string
+	if hasKeywords {
+		// Order by relevance score first (highest first)
+		orderBy = append(orderBy, "keyword_score DESC")
+	}
+
+	// Then apply the requested sort
 	switch f.Sort {
 	case "price_asc":
-		sb.WriteString(" ORDER BY price ASC")
+		orderBy = append(orderBy, "price ASC")
 	case "price_desc":
-		sb.WriteString(" ORDER BY price DESC")
+		orderBy = append(orderBy, "price DESC")
 	default:
-		sb.WriteString(" ORDER BY created_at DESC")
+		orderBy = append(orderBy, "created_at DESC")
 	}
+
+	sb.WriteString(" ORDER BY " + strings.Join(orderBy, ", "))
 
 	if f.Limit <= 0 || f.Limit > 100 {
 		f.Limit = 20
@@ -141,8 +188,16 @@ func (s *Store) List(ctx context.Context, f *models.ListFilters) ([]models.Listi
 	var out []models.Listing
 	for rows.Next() {
 		var l models.Listing
-		if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.Category, &l.UserID, &l.Status, &l.CreatedAt); err != nil {
-			return nil, err
+		if hasKeywords {
+			// Scan includes keyword_score, but we don't need to store it
+			var keywordScore int
+			if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.Category, &l.UserID, &l.Status, &l.CreatedAt, &keywordScore); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.Category, &l.UserID, &l.Status, &l.CreatedAt); err != nil {
+				return nil, err
+			}
 		}
 		out = append(out, l)
 	}
