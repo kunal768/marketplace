@@ -1,8 +1,10 @@
 {
 	"info": {
-		"_postman_id": "382094e5-93ef-4dad-a3ae-af570414a157",
+		"_postman_id": "9c9d2388-318f-4a46-8070-aeceda7d0b1b",
 		"name": "Listings",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "49158031",
+		"_collection_link": "https://dan-lam-1998956.postman.co/workspace/Dan-Lam's-Workspace~6f289f2b-2161-4a8b-8e8f-752a891f06fb/collection/49158031-9c9d2388-318f-4a46-8070-aeceda7d0b1b?action=share&source=collection_link&creator=49158031"
 	},
 	"item": [
 		{
@@ -11,12 +13,9 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{listingURL}}/",
+					"raw": "{{listingURL}}",
 					"host": [
 						"{{listingURL}}"
-					],
-					"path": [
-						""
 					]
 				}
 			},
@@ -28,33 +27,14 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{listingURL}}/?limit=99&status=SOLD&keywords=compact&category=OTHER&offset=0",
+					"raw": "{{listingURL}}?limit=99",
 					"host": [
 						"{{listingURL}}"
-					],
-					"path": [
-						""
 					],
 					"query": [
 						{
 							"key": "limit",
 							"value": "99"
-						},
-						{
-							"key": "status",
-							"value": "SOLD"
-						},
-						{
-							"key": "keywords",
-							"value": "compact"
-						},
-						{
-							"key": "category",
-							"value": "OTHER"
-						},
-						{
-							"key": "offset",
-							"value": "0"
 						}
 					]
 				}
@@ -62,20 +42,10 @@
 			"response": []
 		},
 		{
-			"name": "create listing",
+			"name": "Signup john doe (orchestrator))",
 			"request": {
 				"method": "POST",
 				"header": [
-					{
-						"key": "X-User-ID",
-						"value": "123",
-						"type": "text"
-					},
-					{
-						"key": "X-Role-ID",
-						"value": "1",
-						"type": "text"
-					},
 					{
 						"key": "Content-Type",
 						"value": "application/json"
@@ -83,7 +53,214 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n  \"title\": \"test Vintage Chair\",\n  \"price\": 150,\n  \"category\": \"OTHER\",\n  \"description\": \"test Solid oak, lightly used, perfect for dining rooms.\"\n}",
+					"raw": "{\n  \"user_name\": \"John Doe\",\n  \"email\": \"john.doe@sjsu.edu\",\n  \"password\": \"secret123\",\n  \"phone\": \"+1-555-0100\"\n}"
+				},
+				"url": {
+					"raw": "{{orchestratorURL}}/api/users/signup",
+					"host": [
+						"{{orchestratorURL}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"signup"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Login john doe (orchestrator)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let res;",
+							"try {",
+							"    res = pm.response.json();",
+							"} catch (e) {",
+							"    console.error(\"Response is not valid JSON:\", e);",
+							"    res = {};",
+							"}",
+							"let token = res.token",
+							"if (!token) {",
+							"    console.error(\"⚠️ Could not find token in response. Response keys:\", Object.keys(res));",
+							"} else {",
+							"    // Store it as a collection variable (so it persists for all requests)",
+							"    pm.collectionVariables.set(\"authtoken\", token);",
+							"    console.log(\"✅ Stored token:\", token);",
+							"}",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"email\": \"john.doe@sjsu.edu\",\n  \"password\": \"secret123\"\n}"
+				},
+				"url": {
+					"raw": "{{orchestratorURL}}/api/users/login",
+					"host": [
+						"{{orchestratorURL}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Login admin (orchestrator)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let res;",
+							"try {",
+							"    res = pm.response.json();",
+							"} catch (e) {",
+							"    console.error(\"Response is not valid JSON:\", e);",
+							"    res = {};",
+							"}",
+							"let token = res.token",
+							"if (!token) {",
+							"    console.error(\"⚠️ Could not find token in response. Response keys:\", Object.keys(res));",
+							"} else {",
+							"    // Store it as a collection variable (so it persists for all requests)",
+							"    pm.collectionVariables.set(\"authtoken2\", token);",
+							"    pm.collectionVariables.set(\"user_id\", res.user.user_id);",
+							"    pm.collectionVariables.set(\"user_role\", res.user.role);",
+							"    console.log(\"✅ Stored token:\", token);",
+							"    console.log(\"Stored user: \", res.user.user_id)",
+							"}",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"email\": \"user10@sjsu.edu\",\n  \"password\": \"Password123!\"\n}"
+				},
+				"url": {
+					"raw": "{{orchestratorURL}}/api/users/login",
+					"host": [
+						"{{orchestratorURL}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get user listings",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "X-User-ID",
+						"value": "{{user_id}}",
+						"type": "text"
+					},
+					{
+						"key": "X-Role-ID",
+						"value": "{{user_role}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{listingURL}}/user-lists/",
+					"host": [
+						"{{listingURL}}"
+					],
+					"path": [
+						"user-lists",
+						""
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "create listing user",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let res;",
+							"try {",
+							"    res = pm.response.json();",
+							"} catch (e) {",
+							"    console.error(\"Response is not valid JSON:\", e);",
+							"    res = {};",
+							"}",
+							"",
+							"let itemID = res.id",
+							"",
+							"if (!itemID) {",
+							"    console.error(\"⚠️ Could not find itemID in response. Response keys:\", Object.keys(res));",
+							"} else {",
+							"    // Store it as a collection variable (so it persists for all requests)",
+							"    pm.collectionVariables.set(\"itemID\", itemID);",
+							"    console.log(\"✅ Stored itemID:\", itemID);",
+							"}"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "X-User-ID",
+						"value": "{{user_id}}",
+						"type": "text"
+					},
+					{
+						"key": "X-Role-ID",
+						"value": "{{user_role}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"title\": \"test weak filter\",\n  \"price\": 150,\n  \"category\": \"OTHER\",\n  \"description\": \"test Solid oak, lightly used, perfect for dining rooms.\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -108,41 +285,12 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{listingURL}}/2001",
+					"raw": "{{listingURL}}/{{itemID}}",
 					"host": [
 						"{{listingURL}}"
 					],
 					"path": [
-						"2001"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Get User Listings",
-			"request": {
-				"method": "GET",
-				"header": [
-					{
-						"key": "X-User-ID",
-						"value": "123",
-						"type": "text"
-					},
-					{
-						"key": "X-Role-ID",
-						"value": "1",
-						"type": "text"
-					}
-				],
-				"url": {
-					"raw": "{{listingURL}}/user-lists/",
-					"host": [
-						"{{listingURL}}"
-					],
-					"path": [
-						"user-lists",
-						""
+						"{{itemID}}"
 					]
 				}
 			},
@@ -155,17 +303,13 @@
 				"header": [
 					{
 						"key": "X-User-ID",
-						"value": "123",
+						"value": "{{user_id}}",
 						"type": "text"
 					},
 					{
 						"key": "X-Role-ID",
-						"value": "1",
+						"value": "{{user_role}}",
 						"type": "text"
-					},
-					{
-						"key": "Content-Type",
-						"value": "application/json"
 					}
 				],
 				"body": {
@@ -178,13 +322,13 @@
 					}
 				},
 				"url": {
-					"raw": "{{listingURL}}/update/2001",
+					"raw": "{{listingURL}}/update/{{itemID}}",
 					"host": [
 						"{{listingURL}}"
 					],
 					"path": [
 						"update",
-						"2001"
+						"{{itemID}}"
 					]
 				}
 			},
@@ -197,17 +341,13 @@
 				"header": [
 					{
 						"key": "X-User-ID",
-						"value": "123",
+						"value": "{{user_id}}",
 						"type": "text"
 					},
 					{
 						"key": "X-Role-ID",
-						"value": "1",
+						"value": "{{user_role}}",
 						"type": "text"
-					},
-					{
-						"key": "Content-Type",
-						"value": "application/json"
 					}
 				],
 				"body": {
@@ -215,41 +355,40 @@
 					"raw": "{\n    \"title\": \"test Vintage Chair\"\n}"
 				},
 				"url": {
-					"raw": "{{listingURL}}/update/2001",
+					"raw": "{{listingURL}}/update/{{itemID}}",
 					"host": [
 						"{{listingURL}}"
 					],
 					"path": [
 						"update",
-						"2001"
+						"{{itemID}}"
 					]
 				}
 			},
 			"response": []
 		},
 		{
-			"name": "Add Media URLs to Listing",
+			"name": "Flag created listing",
 			"request": {
+				"auth": {
+					"type": "noauth"
+				},
 				"method": "POST",
 				"header": [
 					{
 						"key": "X-User-ID",
-						"value": "123",
+						"value": "{{user_id}}",
 						"type": "text"
 					},
 					{
 						"key": "X-Role-ID",
-						"value": "1",
+						"value": "{{user_role}}",
 						"type": "text"
-					},
-					{
-						"key": "Content-Type",
-						"value": "application/json"
 					}
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n  \"media_urls\": [\n    \"https://example.com/image1.jpg\",\n    \"https://example.com/image2.jpg\"\n  ]\n}",
+					"raw": "{\n  \"reason\": \"SPAM\",\n  \"details\": \"This listing appears to be spam\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -257,48 +396,41 @@
 					}
 				},
 				"url": {
-					"raw": "{{listingURL}}/add-media-url/2001",
+					"raw": "{{listingURL}}/flag/{{itemID}}",
 					"host": [
 						"{{listingURL}}"
 					],
 					"path": [
-						"add-media-url",
-						"2001"
+						"flag",
+						"{{itemID}}"
 					]
 				}
 			},
 			"response": []
 		},
 		{
-			"name": "Delete createdlisting",
+			"name": "Get Flagged as admin",
 			"request": {
-				"method": "DELETE",
+				"method": "GET",
 				"header": [
 					{
 						"key": "X-User-ID",
-						"value": "123",
+						"value": "{{user_id}}",
 						"type": "text"
 					},
 					{
 						"key": "X-Role-ID",
-						"value": "1",
+						"value": "{{user_role}}",
 						"type": "text"
 					}
 				],
 				"url": {
-					"raw": "{{listingURL}}/delete/2001?hard=true",
+					"raw": "{{listingURL}}/flagged",
 					"host": [
 						"{{listingURL}}"
 					],
 					"path": [
-						"delete",
-						"2001"
-					],
-					"query": [
-						{
-							"key": "hard",
-							"value": "true"
-						}
+						"flagged"
 					]
 				}
 			},
@@ -308,15 +440,10 @@
 			"name": "chatsearch",
 			"request": {
 				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
+				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"query\":\"Any routers?\"\n}",
+					"raw": "{\n    \"query\": \"What are some test listings?\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -336,109 +463,34 @@
 			"response": []
 		},
 		{
-			"name": "Generate Upload SAS url",
+			"name": "Delete createdlisting",
 			"request": {
-				"method": "POST",
+				"method": "DELETE",
 				"header": [
 					{
 						"key": "X-User-ID",
-						"value": "123",
+						"value": "{{user_id}}",
 						"type": "text"
 					},
 					{
 						"key": "X-Role-ID",
-						"value": "1",
+						"value": "{{user_role}}",
 						"type": "text"
 					}
 				],
-				"body": {
-					"mode": "formdata",
-					"formdata": [
-						{
-							"key": "media",
-							"type": "file",
-							"src": []
-						},
-						{
-							"key": "media",
-							"type": "file",
-							"src": []
-						}
-					]
-				},
 				"url": {
-					"raw": "{{listingURL}}/upload",
+					"raw": "{{listingURL}}/delete/{{itemID}}?hard=true",
 					"host": [
 						"{{listingURL}}"
 					],
 					"path": [
-						"upload"
-					]
-				},
-				"description": "Upload file metadata to generate SAS URLs for direct blob storage upload"
-			},
-			"response": []
-		},
-		{
-			"name": "Client Side Code for actual Image upload",
-			"request": {
-				"method": "PUT",
-				"header": [
-					{
-						"key": "x-ms-blob-type",
-						"value": "BlockBlob",
-						"type": "default"
-					},
-					{
-						"key": "Content-Type",
-						"value": "image/png",
-						"type": "default"
-					}
-				],
-				"body": {
-					"mode": "file",
-					"file": {
-						"src": "@filepath1"
-					}
-				},
-				"url": {
-					"raw": "@generatedSASurl",
-					"protocol": "https",
-					"host": [
-						"markeplace",
-						"blob",
-						"core",
-						"windows",
-						"net"
-					],
-					"path": [
-						"listingmedia",
-						"@filepath1"
+						"delete",
+						"{{itemID}}"
 					],
 					"query": [
 						{
-							"key": "se",
-							"value": "2025-11-05T22%3A56%3A58Z"
-						},
-						{
-							"key": "sig",
-							"value": "BHSl7Z6uiikUIoEW0MMax2EqQCURsdI0hVHCFFM1FT8%3D"
-						},
-						{
-							"key": "sp",
-							"value": "raw"
-						},
-						{
-							"key": "spr",
-							"value": "https"
-						},
-						{
-							"key": "sr",
-							"value": "b"
-						},
-						{
-							"key": "sv",
-							"value": "2025-11-05"
+							"key": "hard",
+							"value": "true"
 						}
 					]
 				}
@@ -473,6 +525,35 @@
 	"variable": [
 		{
 			"key": "listingURL",
+			"value": ""
+		},
+		{
+			"key": "orchestratorURL",
+			"value": ""
+		},
+		{
+			"key": "authtoken",
+			"value": ""
+		},
+		{
+			"key": "authtoken2",
+			"value": ""
+		},
+		{
+			"key": "user",
+			"value": ""
+		},
+		{
+			"key": "itemID",
+			"value": "",
+			"type": "default"
+		},
+		{
+			"key": "user_id",
+			"value": ""
+		},
+		{
+			"key": "user_role",
 			"value": ""
 		}
 	]
