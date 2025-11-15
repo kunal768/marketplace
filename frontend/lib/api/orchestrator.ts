@@ -599,4 +599,126 @@ export const orchestratorApi = {
       },
     )
   },
+
+  async getUser(token: string, refreshToken: string | null): Promise<{ user: User; role: string }> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const makeRequest = () =>
+      fetch(`${ORCHESTRATOR_URL}/api/users/profile`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<{ user: User; role: string }>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(`${ORCHESTRATOR_URL}/api/users/profile`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+        })
+      },
+    )
+  },
+
+  async getUserListings(token: string, refreshToken: string | null): Promise<Listing[]> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const makeRequest = () =>
+      fetch(`${ORCHESTRATOR_URL}/api/listings/user-lists/`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<Listing[]>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(`${ORCHESTRATOR_URL}/api/listings/user-lists/`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+        })
+      },
+    )
+  },
+
+  async updateListing(
+    token: string,
+    refreshToken: string | null,
+    listingId: number,
+    updates: {
+      title?: string
+      description?: string
+      price?: number
+      category?: string
+      status?: string
+    },
+  ): Promise<Listing> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/update/${listingId}`
+
+    const body: {
+      title?: string
+      description?: string
+      price?: number
+      category?: string
+      status?: string
+    } = {}
+
+    if (updates.title !== undefined) body.title = updates.title
+    if (updates.description !== undefined) body.description = updates.description
+    if (updates.price !== undefined) body.price = updates.price
+    if (updates.category !== undefined) body.category = updates.category
+    if (updates.status !== undefined) body.status = updates.status
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<Listing>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        })
+      },
+    )
+  },
 }

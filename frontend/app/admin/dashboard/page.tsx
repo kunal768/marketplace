@@ -62,7 +62,7 @@ export default function AdminDashboardPage() {
       title: "Flagged Listings",
       description: "Review and manage listings that have been reported by users",
       icon: Flag,
-      href: "/flagged",
+      href: "/admin/flagged",
       color: "text-red-500",
       bgColor: "bg-red-500/10",
       borderColor: "border-red-500/20",

@@ -36,6 +36,7 @@ import {
   Flag,
   Shield,
   AlertCircle,
+  Edit,
 } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/hooks/use-auth"
@@ -47,7 +48,7 @@ import { useToast } from "@/hooks/use-toast"
 export default function ListingDetailPage() {
   const router = useRouter()
   const params = useParams()
-  const { token, isAuthenticated, isHydrated } = useAuth()
+  const { token, isAuthenticated, isHydrated, user } = useAuth()
   const [refreshToken, setRefreshToken] = useState<string | null>(null)
   const [listing, setListing] = useState<Listing | null>(null)
   const [loading, setLoading] = useState(true)
@@ -184,6 +185,11 @@ export default function ListingDetailPage() {
     { value: "MISLEADING", label: "Misleading Information" },
     { value: "OTHER", label: "Other" },
   ]
+
+  // Check if current user can edit this listing (owner or admin)
+  const canEdit = listing && user && (listing.user_id === user.user_id || user.role === "0")
+  // Check if current user is the owner
+  const isOwner = listing && user && listing.user_id === user.user_id
 
   // Show loading state
   if (!isHydrated || loading) {
@@ -368,14 +374,26 @@ export default function ListingDetailPage() {
                   </div>
 
                   <div className="space-y-3">
-                    <Button
-                      className="w-full h-14 text-base font-semibold magnetic-button"
-                      size="lg"
-                      onClick={() => router.push(`/messages?user=${listing.user_id}`)}
-                    >
-                      <MessageSquare className="mr-2 h-5 w-5" />
-                      Contact Seller
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        className="w-full h-14 text-base font-semibold magnetic-button"
+                        size="lg"
+                        onClick={() => router.push(`/listing/${listing.id}/edit`)}
+                      >
+                        <Edit className="mr-2 h-5 w-5" />
+                        Edit Listing
+                      </Button>
+                    )}
+                    {!isOwner && (
+                      <Button
+                        className="w-full h-14 text-base font-semibold magnetic-button"
+                        size="lg"
+                        onClick={() => router.push(`/messages?user=${listing.user_id}`)}
+                      >
+                        <MessageSquare className="mr-2 h-5 w-5" />
+                        Contact Seller
+                      </Button>
+                    )}
                     <div className="flex gap-3">
                       <Button
                         variant="outline"
