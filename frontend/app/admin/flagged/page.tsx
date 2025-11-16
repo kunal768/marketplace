@@ -10,11 +10,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { useAuth } from "@/hooks/use-auth"
 import { orchestratorApi } from "@/lib/api/orchestrator"
-import type { FlaggedListing, FlagStatus } from "@/lib/api/types"
-import { AlertCircle, Flag, Clock, User, FileText, ArrowLeft, Edit, Trash2 } from "lucide-react"
+import type { FlaggedListing, FlagStatus, FlagReason, Listing } from "@/lib/api/types"
+import { AlertCircle, Flag, Clock, User, FileText, ArrowLeft, Edit, Trash2, ChevronDown } from "lucide-react"
 import Link from "next/link"
+
+type GroupedFlaggedListing = {
+  listing: Listing
+  flags: FlaggedListing[]
+  summary: {
+    totalFlags: number
+    earliestFlagDate: string
+    latestFlagDate: string
+    statusBreakdown: Record<FlagStatus, number>
+    reasonBreakdown: Record<FlagReason, number>
+    primaryStatus: FlagStatus
+  }
+}
 
 export default function FlaggedListingsPage() {
   const router = useRouter()
@@ -31,6 +45,7 @@ export default function FlaggedListingsPage() {
   const [updating, setUpdating] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [expandedListings, setExpandedListings] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -130,6 +145,96 @@ export default function FlaggedListingsPage() {
     // Price is stored in cents, convert to dollars
     if (!price || price === 0) return "$0.00"
     return `$${(price / 100).toFixed(2)}`
+  }
+
+  // Group flags by listing_id
+  const groupFlagsByListing = (flags: FlaggedListing[]): GroupedFlaggedListing[] => {
+    const grouped = new Map<number, FlaggedListing[]>()
+    
+    // Group flags by listing_id
+    flags.forEach((flag) => {
+      const listingId = flag.listing_id
+      if (!grouped.has(listingId)) {
+        grouped.set(listingId, [])
+      }
+      grouped.get(listingId)!.push(flag)
+    })
+
+    // Convert to array and calculate summaries
+    return Array.from(grouped.entries()).map(([listingId, flagList]) => {
+      const listing = flagList[0].listing // All flags have the same listing data
+      
+      // Calculate date range
+      const dates = flagList.map((f) => new Date(f.flag_created_at).getTime())
+      const earliestDate = new Date(Math.min(...dates)).toISOString()
+      const latestDate = new Date(Math.max(...dates)).toISOString()
+
+      // Calculate status breakdown
+      const statusBreakdown: Record<FlagStatus, number> = {
+        OPEN: 0,
+        UNDER_REVIEW: 0,
+        RESOLVED: 0,
+        DISMISSED: 0,
+      }
+      flagList.forEach((f) => {
+        statusBreakdown[f.status] = (statusBreakdown[f.status] || 0) + 1
+      })
+
+      // Calculate reason breakdown
+      const reasonBreakdown: Record<FlagReason, number> = {
+        SPAM: 0,
+        SCAM: 0,
+        INAPPROPRIATE: 0,
+        MISLEADING: 0,
+        OTHER: 0,
+      }
+      flagList.forEach((f) => {
+        reasonBreakdown[f.reason] = (reasonBreakdown[f.reason] || 0) + 1
+      })
+
+      // Determine primary status (OPEN > UNDER_REVIEW > RESOLVED > DISMISSED)
+      let primaryStatus: FlagStatus = "DISMISSED"
+      if (statusBreakdown.OPEN > 0) {
+        primaryStatus = "OPEN"
+      } else if (statusBreakdown.UNDER_REVIEW > 0) {
+        primaryStatus = "UNDER_REVIEW"
+      } else if (statusBreakdown.RESOLVED > 0) {
+        primaryStatus = "RESOLVED"
+      }
+
+      return {
+        listing,
+        flags: flagList.sort((a, b) => 
+          new Date(b.flag_created_at).getTime() - new Date(a.flag_created_at).getTime()
+        ), // Sort flags by most recent first
+        summary: {
+          totalFlags: flagList.length,
+          earliestFlagDate: earliestDate,
+          latestFlagDate: latestDate,
+          statusBreakdown,
+          reasonBreakdown,
+          primaryStatus,
+        },
+      }
+    }).sort((a, b) => 
+      new Date(b.summary.latestFlagDate).getTime() - new Date(a.summary.latestFlagDate).getTime()
+    ) // Sort groups by most recent flag first
+  }
+
+  // Get grouped flags
+  const groupedFlags = groupFlagsByListing(flaggedListings)
+
+  // Toggle expansion for a listing
+  const toggleListingExpansion = (listingId: number) => {
+    setExpandedListings((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(listingId)) {
+        newSet.delete(listingId)
+      } else {
+        newSet.add(listingId)
+      }
+      return newSet
+    })
   }
 
   const handleOpenUpdateDialog = (flagged: FlaggedListing) => {
@@ -270,159 +375,239 @@ export default function FlaggedListingsPage() {
           </div>
         )}
 
-        {!loading && flaggedListings && flaggedListings.length === 0 ? (
+        {!loading && groupedFlags.length === 0 ? (
           <Card className="animate-float-in-up">
             <CardContent className="py-12 text-center">
               <Flag className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-lg text-muted-foreground">No flagged listings found</p>
             </CardContent>
           </Card>
-        ) : !loading && flaggedListings && flaggedListings.length > 0 ? (
+        ) : !loading && groupedFlags.length > 0 ? (
           <div className="space-y-6">
-            {flaggedListings.map((flagged, index) => (
-              <Card key={flagged.flag_id} className="animate-float-in-up" style={{ animationDelay: `${index * 0.1}s` }}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <CardTitle className="text-xl">
-                          <Link
-                            href={`/listing/${flagged.listing.id}`}
-                            className="hover:text-primary transition-colors"
-                          >
-                            {flagged.listing.title}
-                          </Link>
-                        </CardTitle>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 mt-2">
-                        <Badge variant={getStatusBadgeVariant(flagged.status)}>{flagged.status}</Badge>
-                        <Badge variant={getReasonBadgeVariant(flagged.reason)}>{flagged.reason}</Badge>
-                        <Badge variant="outline">{formatPrice(flagged.listing.price)}</Badge>
-                        <Badge variant="outline">{flagged.listing.category}</Badge>
-                      </div>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <div>
-                        <h3 className="font-semibold mb-2 flex items-center gap-2">
-                          <Flag className="h-4 w-4" />
-                          Flag Information
-                        </h3>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex items-center gap-2">
-                            <Flag className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-muted-foreground">Flag ID:</span>
-                            <span className="font-mono text-xs">{flagged.flag_id}</span>
+            {groupedFlags.map((grouped, index) => {
+              const isExpanded = expandedListings.has(grouped.listing.id)
+              const reasonBreakdownText = Object.entries(grouped.summary.reasonBreakdown)
+                .filter(([_, count]) => count > 0)
+                .map(([reason, count]) => `${count} ${reason}`)
+                .join(", ")
+
+              return (
+                <Card key={grouped.listing.id} className="animate-float-in-up border-2" style={{ animationDelay: `${index * 0.1}s` }}>
+                  <CardHeader className="pb-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-3">
+                          <CardTitle className="text-xl">
+                            <Link
+                              href={`/listing/${grouped.listing.id}`}
+                              className="hover:text-primary transition-colors"
+                            >
+                              {grouped.listing.title}
+                            </Link>
+                          </CardTitle>
+                          <Badge variant="destructive" className="text-sm">
+                            {grouped.summary.totalFlags} Report{grouped.summary.totalFlags !== 1 ? "s" : ""}
+                          </Badge>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 mb-3">
+                          <Badge variant={getStatusBadgeVariant(grouped.summary.primaryStatus)}>
+                            {grouped.summary.primaryStatus}
+                          </Badge>
+                          {Object.entries(grouped.summary.reasonBreakdown)
+                            .filter(([_, count]) => count > 0)
+                            .map(([reason, count]) => (
+                              <Badge key={reason} variant={getReasonBadgeVariant(reason)}>
+                                {count} {reason}
+                              </Badge>
+                            ))}
+                          <Badge variant="outline">{formatPrice(grouped.listing.price)}</Badge>
+                          <Badge variant="outline">{grouped.listing.category}</Badge>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            <span>First: {formatDate(grouped.summary.earliestFlagDate)}</span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-muted-foreground">Flagged:</span>
-                            <span>{formatDate(flagged.flag_created_at)}</span>
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            <span>Latest: {formatDate(grouped.summary.latestFlagDate)}</span>
                           </div>
-                          {flagged.reporter_user_id && (
-                            <div className="flex items-center gap-2">
-                              <User className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-muted-foreground">Reporter ID:</span>
-                              <span className="font-mono text-xs">{flagged.reporter_user_id}</span>
-                            </div>
-                          )}
-                          {flagged.details && (
-                            <div className="flex items-start gap-2">
-                              <FileText className="h-4 w-4 text-muted-foreground mt-0.5" />
-                              <div>
-                                <span className="text-muted-foreground">Details:</span>
-                                <p className="mt-1">{flagged.details}</p>
-                              </div>
-                            </div>
-                          )}
-                          {flagged.resolution_notes && (
-                            <div className="flex items-start gap-2">
-                              <FileText className="h-4 w-4 text-muted-foreground mt-0.5" />
-                              <div className="flex-1 min-w-0">
-                                <span className="text-muted-foreground block">Resolution Notes:</span>
-                                <div className="
-                                  mt-1
-                                  w-[clamp(22rem,40vw,32rem)]  /* min 22rem, ideal 40vw, max 32rem */
-                                  max-w-full
-                                  h-40 overflow-auto
-                                  rounded-md border bg-muted/30 p-2 text-sm
-                                  whitespace-pre-wrap break-words
-                                ">
-                                  {flagged.resolution_notes}
-                                </div>
-                              </div>
-                            </div>
-                          )}
                         </div>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => toggleListingExpansion(grouped.listing.id)}
+                      >
+                        <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
+                      </Button>
                     </div>
-                    <div className="space-y-4">
-                      <div>
-                        <h3 className="font-semibold mb-2">Listing Information</h3>
-                        <div className="space-y-2 text-sm">
-                          <div>
-                            <span className="text-muted-foreground">Listing ID:</span>
-                            <span className="ml-2 font-mono text-xs">{flagged.listing.id}</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Seller ID:</span>
-                            <span className="ml-2 font-mono text-xs">{flagged.listing.user_id}</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Status:</span>
-                            <Badge variant="outline" className="ml-2">
-                              {flagged.listing.status}
-                            </Badge>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Created:</span>
-                            <span className="ml-2">{formatDate(flagged.listing.created_at)}</span>
-                          </div>
-                          {flagged.listing.description && (
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                      <div className="space-y-4">
+                        <div>
+                          <h3 className="font-semibold mb-2">Summary</h3>
+                          <div className="space-y-2 text-sm">
                             <div>
-                              <span className="text-muted-foreground">Description:</span>
-                              <p className="mt-1 text-sm">{flagged.listing.description}</p>
+                              <span className="text-muted-foreground">Total Reports:</span>
+                              <span className="ml-2 font-semibold">{grouped.summary.totalFlags}</span>
                             </div>
-                          )}
+                            <div>
+                              <span className="text-muted-foreground">Reasons:</span>
+                              <span className="ml-2">{reasonBreakdownText}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Status Breakdown:</span>
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {Object.entries(grouped.summary.statusBreakdown).map(([status, count]) => 
+                                  count > 0 ? (
+                                    <Badge key={status} variant="outline" className="text-xs">
+                                      {count} {status}
+                                    </Badge>
+                                  ) : null
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      <div className="pt-4 space-y-2">
-                        <Link href={`/listing/${flagged.listing.id}`}>
-                          <Button variant="outline" className="w-full">
-                            View Listing
-                          </Button>
-                        </Link>
-                        <Button
-                          variant="default"
-                          className="w-full"
-                          onClick={() => handleOpenUpdateDialog(flagged)}
-                        >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Update Status
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          className="w-full"
-                          onClick={() => handleOpenDeleteDialog(flagged)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete Flag
-                        </Button>
+                      <div className="space-y-4">
+                        <div>
+                          <h3 className="font-semibold mb-2">Listing Information</h3>
+                          <div className="space-y-2 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">Listing ID:</span>
+                              <span className="ml-2 font-mono text-xs">{grouped.listing.id}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Seller ID:</span>
+                              <span className="ml-2 font-mono text-xs">{grouped.listing.user_id}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Status:</span>
+                              <Badge variant="outline" className="ml-2">
+                                {grouped.listing.status}
+                              </Badge>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Created:</span>
+                              <span className="ml-2">{formatDate(grouped.listing.created_at)}</span>
+                            </div>
+                            {grouped.listing.description && (
+                              <div>
+                                <span className="text-muted-foreground">Description:</span>
+                                <p className="mt-1 text-sm line-clamp-2">{grouped.listing.description}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="pt-2">
+                          <Link href={`/listing/${grouped.listing.id}`}>
+                            <Button variant="outline" className="w-full">
+                              View Listing
+                            </Button>
+                          </Link>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+
+                    <Collapsible open={isExpanded} onOpenChange={() => toggleListingExpansion(grouped.listing.id)}>
+                      <CollapsibleContent>
+                        <div className="border-t pt-4 mt-4 space-y-4">
+                          <h3 className="font-semibold text-lg mb-3">Individual Reports ({grouped.flags.length})</h3>
+                          {grouped.flags.map((flag) => (
+                            <Card key={flag.flag_id} className="bg-muted/30 border-l-4 border-l-primary/50">
+                              <CardContent className="pt-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="space-y-3">
+                                    <div>
+                                      <h4 className="font-medium mb-2 flex items-center gap-2">
+                                        <Flag className="h-4 w-4" />
+                                        Flag #{flag.flag_id}
+                                      </h4>
+                                      <div className="space-y-2 text-sm">
+                                        <div className="flex items-center gap-2">
+                                          <Badge variant={getStatusBadgeVariant(flag.status)} className="text-xs">
+                                            {flag.status}
+                                          </Badge>
+                                          <Badge variant={getReasonBadgeVariant(flag.reason)} className="text-xs">
+                                            {flag.reason}
+                                          </Badge>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <Clock className="h-3 w-3 text-muted-foreground" />
+                                          <span className="text-muted-foreground">Reported:</span>
+                                          <span>{formatDate(flag.flag_created_at)}</span>
+                                        </div>
+                                        {flag.reporter_user_id && (
+                                          <div className="flex items-center gap-2">
+                                            <User className="h-3 w-3 text-muted-foreground" />
+                                            <span className="text-muted-foreground">Reporter:</span>
+                                            <span className="font-mono text-xs">{flag.reporter_user_id}</span>
+                                          </div>
+                                        )}
+                                        {flag.details && (
+                                          <div className="flex items-start gap-2 mt-2">
+                                            <FileText className="h-3 w-3 text-muted-foreground mt-0.5" />
+                                            <div className="flex-1">
+                                              <span className="text-muted-foreground text-xs">Details:</span>
+                                              <p className="mt-1 text-xs">{flag.details}</p>
+                                            </div>
+                                          </div>
+                                        )}
+                                        {flag.resolution_notes && (
+                                          <div className="flex items-start gap-2 mt-2">
+                                            <FileText className="h-3 w-3 text-muted-foreground mt-0.5" />
+                                            <div className="flex-1">
+                                              <span className="text-muted-foreground text-xs">Resolution Notes:</span>
+                                              <div className="mt-1 max-h-24 overflow-auto rounded-md border bg-background/50 p-2 text-xs whitespace-pre-wrap break-words">
+                                                {flag.resolution_notes}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-col justify-end gap-2">
+                                    <Button
+                                      variant="default"
+                                      size="sm"
+                                      className="w-full"
+                                      onClick={() => handleOpenUpdateDialog(flag)}
+                                    >
+                                      <Edit className="h-3 w-3 mr-2" />
+                                      Update Flag #{flag.flag_id}
+                                    </Button>
+                                    <Button
+                                      variant="destructive"
+                                      size="sm"
+                                      className="w-full"
+                                      onClick={() => handleOpenDeleteDialog(flag)}
+                                    >
+                                      <Trash2 className="h-3 w-3 mr-2" />
+                                      Delete Flag #{flag.flag_id}
+                                    </Button>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
         ) : null}
 
-        {!loading && flaggedListings && flaggedListings.length > 0 && (
+        {!loading && groupedFlags.length > 0 && (
           <div className="mt-6 text-center text-sm text-muted-foreground">
-            Showing {flaggedListings.length} flagged listing{flaggedListings.length !== 1 ? "s" : ""}
+            Showing {groupedFlags.length} listing{groupedFlags.length !== 1 ? "s" : ""} with {flaggedListings.length} total report{flaggedListings.length !== 1 ? "s" : ""}
           </div>
         )}
       </div>
