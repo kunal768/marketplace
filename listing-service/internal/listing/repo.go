@@ -461,6 +461,50 @@ func (s *Store) GetFlaggedListings(ctx context.Context, status *string) ([]model
 	return out, rows.Err()
 }
 
+// UpdateFlagListing updates a flagged listing
+func (s *Store) UpdateFlagListing(ctx context.Context, flagID int64, userID string, p models.UpdateFlagParams) (models.FlaggedListing, error) {
+
+	// First verify the flag exists
+	var flag models.FlaggedListing
+	err := s.P.QueryRow(ctx, `SELECT id,listing_id,reporter_user_id,reason,details,status,reviewer_user_id,resolution_notes,created_at,updated_at,resolved_at FROM flagged_listings WHERE id=$1`, flagID).
+		Scan(&flag.FlagID, &flag.ListingID, &flag.ReporterUserID, &flag.Reason, &flag.Details, &flag.Status, &flag.ReviewerUserID, &flag.ResolutionNotes, &flag.FlagCreatedAt, &flag.FlagUpdatedAt, &flag.FlagResolvedAt)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return models.FlaggedListing{}, fmt.Errorf("flag not found")
+		}
+		return models.FlaggedListing{}, fmt.Errorf("failed to verify flag: %w", err)
+	}
+
+	// Update the flag in flagged_listings table
+	const updateFlagQuery = `
+		UPDATE flagged_listings
+		SET status=$1, resolution_notes=$2, updated_at=now()
+		WHERE id=$3
+		RETURNING id, listing_id, reporter_user_id, reason, details, status, reviewer_user_id, resolution_notes, created_at, updated_at, resolved_at
+	`
+
+	var updatedFlag models.FlaggedListing
+	err = s.P.QueryRow(ctx, updateFlagQuery, p.Status, p.ResolutionNotes, flagID).
+		Scan(
+			&updatedFlag.FlagID,
+			&updatedFlag.ListingID,
+			&updatedFlag.ReporterUserID,
+			&updatedFlag.Reason,
+			&updatedFlag.Details,
+			&updatedFlag.Status,
+			&updatedFlag.ReviewerUserID,
+			&updatedFlag.ResolutionNotes,
+			&updatedFlag.FlagCreatedAt,
+			&updatedFlag.FlagUpdatedAt,
+			&updatedFlag.FlagResolvedAt,
+		)
+	if err != nil {
+		return models.FlaggedListing{}, fmt.Errorf("failed to update flag: %w", err)
+	}
+
+	return updatedFlag, nil
+}
+
 // FlagListing creates a new flag for a listing
 func (s *Store) FlagListing(ctx context.Context, listingID int64, reporterUserID string, p models.CreateFlagParams) (models.FlaggedListing, error) {
 	// First verify the listing exists

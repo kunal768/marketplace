@@ -231,6 +231,11 @@ export default function FlaggedListingsPage() {
                         </h3>
                         <div className="space-y-2 text-sm">
                           <div className="flex items-center gap-2">
+                            <Flag className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-muted-foreground">Flag ID:</span>
+                            <span className="font-mono text-xs">{flagged.flag_id}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
                             <Clock className="h-4 w-4 text-muted-foreground" />
                             <span className="text-muted-foreground">Flagged:</span>
                             <span>{formatDate(flagged.flag_created_at)}</span>
@@ -254,9 +259,18 @@ export default function FlaggedListingsPage() {
                           {flagged.resolution_notes && (
                             <div className="flex items-start gap-2">
                               <FileText className="h-4 w-4 text-muted-foreground mt-0.5" />
-                              <div>
-                                <span className="text-muted-foreground">Resolution Notes:</span>
-                                <p className="mt-1">{flagged.resolution_notes}</p>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-muted-foreground block">Resolution Notes:</span>
+                                <div className="
+                                  mt-1
+                                  w-[clamp(22rem,40vw,32rem)]  /* min 22rem, ideal 40vw, max 32rem */
+                                  max-w-full
+                                  h-40 overflow-auto
+                                  rounded-md border bg-muted/30 p-2 text-sm
+                                  whitespace-pre-wrap break-words
+                                ">
+                                  {flagged.resolution_notes}
+                                </div>
                               </div>
                             </div>
                           )}

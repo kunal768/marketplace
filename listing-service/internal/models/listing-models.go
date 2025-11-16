@@ -115,6 +115,12 @@ type CreateFlagParams struct {
 	Details   *string    `json:"details,omitempty"`
 }
 
+// UpdateFlagParams represents the parameters for updating a flagged listing
+type UpdateFlagParams struct {
+	Status          FlagStatus `json:"status"`
+	ResolutionNotes *string    `json:"resolution_notes,omitempty"`
+}
+
 // FlaggedListing represents a flagged listing with both flag and listing information
 type FlaggedListing struct {
 	// Flag information

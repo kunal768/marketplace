@@ -216,3 +216,14 @@ type FlagListingRequest struct {
 type FlagListingResponse struct {
 	FlaggedListing FlaggedListing `json:"flagged_listing"`
 }
+
+type UpdateFlagListingRequest struct {
+	FlagID          int64      `json:"flag_id"`
+	Status          FlagStatus `json:"status"`
+	ResolutionNotes *string    `json:"resolution_notes,omitempty"`
+}
+
+// UpdateFlagListingResponse returns the updated flagged listing
+type UpdateFlagListingResponse struct {
+	FlaggedListing FlaggedListing `json:"flagged_listing"`
+}

@@ -541,6 +541,58 @@ func (e *Endpoints) FlagListingHandler(w http.ResponseWriter, r *http.Request) {
 	httplib.WriteJSON(w, http.StatusCreated, response)
 }
 
+func (e *Endpoints) UpdateFlagListingHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract ID from URL path using PathValue (Go 1.22+)
+	flagIDStr := r.PathValue("flag_id")
+	if flagIDStr == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Flag ID is required",
+		})
+	}
+
+	flagID, err := strconv.ParseInt(flagIDStr, 10, 64)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Invalid flag ID format",
+		})
+		return
+	}
+
+	var updateReq struct {
+		Status          FlagStatus `json:"status"`
+		ResolutionNotes *string    `json:"resolution_notes,omitempty"`
+	}
+
+	// Decode request body
+	if err := json.NewDecoder(r.Body).Decode(&updateReq); err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request body",
+			Message: "Failed to decode request body",
+		})
+		return
+	}
+
+	req := UpdateFlagListingRequest{
+		FlagID:          flagID,
+		Status:          updateReq.Status,
+		ResolutionNotes: updateReq.ResolutionNotes,
+	}
+
+	// Call service
+	response, err := e.service.UpdateFlagListing(r.Context(), req)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to update flag listing",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, response.FlaggedListing)
+}
+
 // adminOnlyMiddleware checks if the user has admin role
 func adminOnlyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

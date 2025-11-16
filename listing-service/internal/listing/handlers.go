@@ -128,7 +128,7 @@ func (h *Handlers) DeleteHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("hard") == "true" {
 		if err := h.S.Delete(r.Context(), id, userID, userRole); err != nil {
 			platform.Error(w, 500, err.Error())
-			log.Println("Big pooopie delete")
+			log.Println("Error on delete handler")
 			return
 		}
 	} else {
@@ -448,6 +448,60 @@ func (h *Handlers) FlagListingHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Create the flag
 	flaggedListing, err := h.S.FlagListing(r.Context(), listingID, userID, req)
+	if err != nil {
+		log.Printf("Error flagging listing: %v", err)
+		if err.Error() == "listing not found" {
+			platform.Error(w, http.StatusNotFound, "listing not found")
+			return
+		}
+		platform.Error(w, http.StatusInternalServerError, "failed to flag listing")
+		return
+	}
+
+	platform.JSON(w, http.StatusCreated, flaggedListing)
+}
+
+// UpdateFlagListingHandler handles updating a flagged listing
+func (h *Handlers) UpdateFlagListingHandler(w http.ResponseWriter, r *http.Request) {
+	// Validate user is authenticated
+	userID, userRole, err := common.ValidateUserAndRoleAuthWithRole(w, r)
+	if err != nil {
+		return
+	}
+	log.Println("Pass auth")
+
+	// Check if user is admin
+	if userRole != string(httplib.ADMIN) {
+		platform.Error(w, http.StatusForbidden, "admin access required")
+		return
+	}
+	log.Println("Pass admin auth")
+
+	// Get listing ID from URL path
+	flagIDStr := chi.URLParam(r, "flag_id")
+	if flagIDStr == "" {
+		platform.Error(w, http.StatusBadRequest, "Flagging ID is required")
+		return
+	}
+	log.Println("Got flag id")
+
+	flagID, err := strconv.ParseInt(flagIDStr, 10, 64)
+	if err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid flagging ID")
+		return
+	}
+	log.Println("Got flag id parsed")
+
+	// Decode request body
+	var req models.UpdateFlagParams
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	log.Println("Got update request model")
+
+	// Create the flag
+	flaggedListing, err := h.S.UpdateFlagListing(r.Context(), flagID, userID, req)
 	if err != nil {
 		log.Printf("Error flagging listing: %v", err)
 		if err.Error() == "listing not found" {
