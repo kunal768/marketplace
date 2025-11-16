@@ -223,7 +223,7 @@ func (e *Endpoints) EventsVerifyHandler(w http.ResponseWriter, r *http.Request) 
 	httplib.WriteJSON(w, http.StatusOK, response)
 }
 
-// SearchUsersHandler handles searching users by username prefix (requires authentication)
+// SearchUsersHandler handles searching users by user_id prefix (requires authentication)
 func (e *Endpoints) SearchUsersHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from context (set by AuthMiddleware)
 	userID, ok := r.Context().Value(httplib.ContextKey("userId")).(string)

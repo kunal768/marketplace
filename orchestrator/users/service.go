@@ -251,7 +251,7 @@ func (s *svc) GetUserByID(ctx context.Context, userID string) (*models.User, err
 	return user, nil
 }
 
-// SearchUsers searches users by username prefix with pagination
+// SearchUsers searches users by user_id prefix with pagination
 func (s *svc) SearchUsers(ctx context.Context, query string, excludeUserID string, page int, limit int) ([]UserSearchResult, error) {
 	// Validate query
 	if len(query) < 1 {

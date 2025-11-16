@@ -331,12 +331,12 @@ func (r *repo) DeleteUserLoginAuth(ctx context.Context, userID string) error {
 	return err
 }
 
-// SearchUsers searches users by username prefix (case-insensitive) with pagination
+// SearchUsers searches users by user_id prefix with pagination
 func (r *repo) SearchUsers(ctx context.Context, query string, excludeUserID string, limit int, offset int) ([]UserSearchResult, error) {
 	sqlQuery := `
 		SELECT user_id, user_name
 		FROM users
-		WHERE LOWER(user_name) LIKE LOWER($1 || '%')
+		WHERE user_id::text LIKE $1 || '%'
 		AND user_id != $2
 		ORDER BY user_name
 		LIMIT $3 OFFSET $4
