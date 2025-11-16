@@ -23,6 +23,7 @@ type Service interface {
 	RefreshToken(ctx context.Context, req RefreshTokenRequest) (*RefreshTokenResponse, error)
 	GetUserByID(ctx context.Context, userID string) (*models.User, error)
 	SearchUsers(ctx context.Context, query string, excludeUserID string, page int, limit int) ([]UserSearchResult, error)
+	UpdateUser(ctx context.Context, req UpdateUserRequest) (*UpdateUserResponse, error)
 }
 
 func NewService(repo Repository, publisher queue.Publisher) Service {
@@ -268,6 +269,31 @@ func (s *svc) SearchUsers(ctx context.Context, query string, excludeUserID strin
 	}
 
 	return results, nil
+}
+
+func (s *svc) UpdateUser(ctx context.Context, req UpdateUserRequest) (*UpdateUserResponse, error) {
+	// Get user by ID
+	user, err := s.repo.GetUserByID(ctx, req.UserId)
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %w", err)
+	}
+
+	// Update user
+	user.UserName = req.UserName
+	user.Email = req.Email
+	//user.Role = req.Role
+	user.Contact = req.Contact
+
+	// Update user
+	updatedUser, err := s.repo.UpdateUser(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update user: %w", err)
+	}
+
+	return &UpdateUserResponse{
+		Message: "User updated successfully",
+		User:    *updatedUser,
+	}, nil
 }
 
 // generateUserID generates a unique user ID

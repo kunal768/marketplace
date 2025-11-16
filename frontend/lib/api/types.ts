@@ -126,3 +126,17 @@ export interface DeleteFlagListingResponse {
   message: string
 }
 
+export interface UpdateUserRequest {
+  user_id: string
+  user_name: string
+  email: string
+  contact: {
+    Email: string
+  }
+}
+
+export interface UpdateUserResponse {
+  message: string
+  user: User
+}
+

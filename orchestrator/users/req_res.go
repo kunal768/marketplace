@@ -67,7 +67,20 @@ type UserSearchResult struct {
 
 type SearchUsersResponse struct {
 	Users   []UserSearchResult `json:"users"`
-	Page    int                 `json:"page"`
-	Limit   int                 `json:"limit"`
-	HasMore bool                `json:"has_more"`
+	Page    int                `json:"page"`
+	Limit   int                `json:"limit"`
+	HasMore bool               `json:"has_more"`
+}
+
+type UpdateUserRequest struct {
+	UserId   string `json:"user_id" db:"user_id"`
+	UserName string `json:"user_name" db:"user_name"`
+	Email    string `json:"email" db:"email"`
+	//Role     models.UserRole `json:"role" db:"role"`
+	Contact models.Contact `json:"contact" db:"contact"`
+}
+
+type UpdateUserResponse struct {
+	Message string      `json:"message"`
+	User    models.User `json:"user"`
 }

@@ -316,10 +316,72 @@ func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 
 	// All other routes require auth + role injection by default
 	mux.Handle("GET /api/users/profile", protected(http.HandlerFunc(e.GetUserHandler)))
+	mux.Handle("PUT /api/users/profile", protected(http.HandlerFunc(e.UpdateUserHandler)))
 	mux.Handle("GET /api/users/search", protected(http.HandlerFunc(e.SearchUsersHandler)))
 
 	// Events verification endpoint (requires auth but not role injection)
 	mux.Handle("POST /api/events/verify", httplib.AuthMiddleWare(httplib.JSONRequestDecoder(http.HandlerFunc(e.EventsVerifyHandler))))
+}
+
+func (e *Endpoints) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
+	var req UpdateUserRequest
+
+	// Decode request body
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request body",
+			Message: "Failed to decode request body",
+		})
+		return
+	}
+
+	// Validate request
+	if err := validateUpdateUserRequest(req); err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Validation error",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	// Call service
+	response, err := e.service.UpdateUser(r.Context(), req)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Update failed",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, response)
+}
+
+func validateUpdateUserRequest(req UpdateUserRequest) error {
+	if req.UserId == "" {
+		return fmt.Errorf("user ID is required")
+	}
+	if req.UserName == "" {
+		return fmt.Errorf("username is required")
+	}
+	if req.Email == "" {
+		return fmt.Errorf("email is required")
+	}
+	if !isValidEmail(req.Email) {
+		return fmt.Errorf("invalid email format")
+	}
+	/*
+		if req.Role == "" {
+			return fmt.Errorf("role is required")
+		}
+	*/
+	if req.Contact.Email == "" {
+		return fmt.Errorf("contact email is required")
+	}
+	if !isValidEmail(req.Contact.Email) {
+		return fmt.Errorf("invalid contact email format")
+	}
+	return nil
 }
 
 // validateSignupRequest validates signup request

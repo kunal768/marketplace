@@ -18,6 +18,8 @@ import type {
   UpdateFlagListingRequest,
   UpdateFlagListingResponse,
   DeleteFlagListingResponse,
+  UpdateUserRequest,
+  UpdateUserResponse,
 } from "./types"
 import { isTokenExpired } from "@/lib/utils/jwt"
 
@@ -660,6 +662,43 @@ export const orchestratorApi = {
             Authorization: `Bearer ${newToken || validToken}`,
             "Content-Type": "application/json",
           },
+        })
+      },
+    )
+  },
+
+  async updateUser(
+    token: string,
+    refreshToken: string | null,
+    request: UpdateUserRequest,
+  ): Promise<UpdateUserResponse> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const makeRequest = () =>
+      fetch(`${ORCHESTRATOR_URL}/api/users/profile`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<UpdateUserResponse>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(`${ORCHESTRATOR_URL}/api/users/profile`, {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(request),
         })
       },
     )
