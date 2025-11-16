@@ -182,6 +182,13 @@ export function useAuth() {
   }, [authState.refreshToken])
 
   const logout = useCallback(() => {
+    // Import dynamically to avoid circular dependency
+    import('@/lib/websocket/manager').then(({ disconnectGlobalWebSocket }) => {
+      disconnectGlobalWebSocket()
+    }).catch(() => {
+      // Ignore if module not available
+    })
+    
     setAuthState({ user: null, token: null, refreshToken: null, isAuthenticated: false })
     localStorage.removeItem(STORAGE_KEYS.USER)
     localStorage.removeItem(STORAGE_KEYS.USER_ID)

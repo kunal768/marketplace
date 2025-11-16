@@ -24,16 +24,21 @@ type Client struct {
 	Auth     auth.AuthClient
 	Messages *message.MessageService
 
-	lastBeat           atomic.Int64 // unix seconds
-	deadAfter          time.Duration
-	undeliveredFetched bool // Track if we've already fetched undelivered messages for this connection
+	undeliveredFetched atomic.Bool // Track if we've already fetched undelivered messages for this connection
+	refreshCancel      context.CancelFunc // Cancel function for presence refresh loop
 }
 
-func NewClient(conn net.Conn, hub *Hub, store presence.PresenceStore, authc auth.AuthClient, msgService *message.MessageService, deadAfterSec int) *Client {
-	return &Client{conn: conn, Hub: hub, Presence: store, Auth: authc, Messages: msgService, deadAfter: time.Duration(deadAfterSec) * time.Second}
+func NewClient(conn net.Conn, hub *Hub, store presence.PresenceStore, authc auth.AuthClient, msgService *message.MessageService) *Client {
+	return &Client{conn: conn, Hub: hub, Presence: store, Auth: authc, Messages: msgService}
 }
 
 func (c *Client) Close(ctx context.Context) {
+	// Stop presence refresh loop
+	if c.refreshCancel != nil {
+		c.refreshCancel()
+		c.refreshCancel = nil
+	}
+	
 	if c.ID != "" {
 		_ = c.Presence.SetOffline(ctx, c.ID)
 		c.Hub.Unregister(c.ID)
@@ -78,7 +83,6 @@ func (c *Client) Serve(ctx context.Context) {
 
 	// Authentication successful - send ack FIRST before any other operations
 	c.ID = authMsg.UserID
-	c.lastBeat.Store(time.Now().Unix())
 	_ = c.conn.SetReadDeadline(time.Time{}) // clear deadline
 
 	// Send auth success acknowledgment IMMEDIATELY after verification
@@ -86,7 +90,20 @@ func (c *Client) Serve(ctx context.Context) {
 	c.sendAuthAck("success", c.ID, "")
 	log.Printf("User %s authenticated, sending auth_ack", c.ID)
 
-	// Now register with hub and set presence (these might take time or error)
+	// Set presence FIRST before registering with hub
+	// This ensures presence is set before any messages can arrive
+	setOnlineStart := time.Now()
+	log.Printf("[TIMING] [%s] Starting SetOnline at %v (before Hub.Register)", c.ID, setOnlineStart)
+	if err := c.Presence.SetOnline(ctx, c.ID); err != nil {
+		log.Printf("[TIMING] [%s] Failed to set user %s online: %v (took %v)", c.ID, c.ID, err, time.Since(setOnlineStart))
+		// Continue anyway - presence might be set by refresh loop
+	} else {
+		setOnlineDuration := time.Since(setOnlineStart)
+		log.Printf("[TIMING] [%s] SetOnline completed successfully in %v", c.ID, setOnlineDuration)
+		log.Printf("User %s marked online in Redis (before subscription)", c.ID)
+	}
+
+	// Now register with hub (subscribes to Redis pub/sub)
 	// Hub.Register now waits for subscription confirmation before returning
 	registerStart := time.Now()
 	log.Printf("[TIMING] [%s] Starting Hub.Register at %v", c.ID, registerStart)
@@ -94,25 +111,28 @@ func (c *Client) Serve(ctx context.Context) {
 	registerDuration := time.Since(registerStart)
 	log.Printf("[TIMING] [%s] Hub.Register completed in %v", c.ID, registerDuration)
 
-	setOnlineStart := time.Now()
-	log.Printf("[TIMING] [%s] Starting SetOnline at %v", c.ID, setOnlineStart)
-	if err := c.Presence.SetOnline(ctx, c.ID); err != nil {
-		log.Printf("[TIMING] [%s] Failed to set user %s online: %v (took %v)", c.ID, c.ID, err, time.Since(setOnlineStart))
-	} else {
-		setOnlineDuration := time.Since(setOnlineStart)
-		log.Printf("[TIMING] [%s] SetOnline completed successfully in %v", c.ID, setOnlineDuration)
-		log.Printf("User %s registered and connected (marked online in Redis, subscription confirmed)", c.ID)
-		// Trigger undelivered messages fetch now that user is online and subscription is confirmed
-		// This runs in background and doesn't block the connection
+	// Start presence refresh loop to keep presence key alive while connected
+	refreshCtx, refreshCancel := context.WithCancel(ctx)
+	c.refreshCancel = refreshCancel
+	go c.refreshPresenceLoop(refreshCtx)
+	log.Printf("[TIMING] [%s] Started presence refresh loop", c.ID)
+
+	// Trigger undelivered messages fetch now that user is online and subscription is confirmed
+	// This runs in background and doesn't block the connection
+	// Use CompareAndSwap to ensure only one goroutine is spawned, even if SetOnline is called multiple times
+	// CompareAndSwap atomically checks if flag is false and sets it to true, preventing race conditions
+	if c.undeliveredFetched.CompareAndSwap(false, true) {
+		// Successfully set flag to true, spawn goroutine
+		// The flag is set to true here to prevent other goroutines, but triggerUndeliveredMessagesFetch
+		// will still execute and set it to true again at the end (idempotent)
 		fetchStart := time.Now()
 		log.Printf("[TIMING] [%s] Starting triggerUndeliveredMessagesFetch at %v (after SetOnline completed)", c.ID, fetchStart)
 		go func() {
 			c.triggerUndeliveredMessagesFetch(ctx, authMsg.Token)
 		}()
+	} else {
+		log.Printf("[TIMING] [%s] Skipping triggerUndeliveredMessagesFetch - already triggered for this connection", c.ID)
 	}
-
-	// Start watchdog
-	go c.watchdog(ctx)
 
 	for {
 		b, _, err := wsutil.ReadClientData(c.conn)
@@ -120,9 +140,6 @@ func (c *Client) Serve(ctx context.Context) {
 			log.Printf("ws read error %s: %v", c.ID, err)
 			return
 		}
-		// Update lastBeat immediately when ANY message is received
-		// This indicates the connection is alive, regardless of message type
-		c.lastBeat.Store(time.Now().Unix())
 
 		kind, payload, err := ParseMessage(b)
 		if err != nil {
@@ -131,9 +148,21 @@ func (c *Client) Serve(ctx context.Context) {
 		}
 		switch kind {
 		case "presence":
-			_ = c.Presence.Refresh(ctx, c.ID)
+			// Presence messages are ignored (backward compatibility - old clients may send them)
+			// Refresh presence on activity (even though we have background refresh)
+			if c.ID != "" {
+				if err := c.Presence.Refresh(ctx, c.ID); err != nil {
+					log.Printf("Failed to refresh presence for %s: %v", c.ID, err)
+				}
+			}
 		case "chat":
 			chatMsg := payload.(ChatMessage)
+			// Refresh presence on activity (sending message indicates user is active)
+			if c.ID != "" {
+				if err := c.Presence.Refresh(ctx, c.ID); err != nil {
+					log.Printf("Failed to refresh presence for %s: %v", c.ID, err)
+				}
+			}
 			// Enqueue chat message (fire-and-forget)
 			if err := c.Messages.EnqueueChatMessage(ctx, c.ID, chatMsg.RecipientID, chatMsg.Msg); err != nil {
 				log.Printf("Failed to enqueue chat message from %s: %v", c.ID, err)
@@ -141,20 +170,6 @@ func (c *Client) Serve(ctx context.Context) {
 			}
 		default:
 			log.Printf("Unknown message type from %s: %s", c.ID, kind)
-		}
-	}
-}
-
-func (c *Client) watchdog(ctx context.Context) {
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-	for range ticker.C {
-		last := time.Unix(c.lastBeat.Load(), 0)
-		timeSinceLastBeat := time.Since(last)
-		if timeSinceLastBeat > c.deadAfter {
-			log.Printf("Watchdog closing connection for user %s: no activity for %v (deadAfter: %v)", c.ID, timeSinceLastBeat, c.deadAfter)
-			c.Close(ctx)
-			return
 		}
 	}
 }
@@ -192,6 +207,16 @@ func (c *Client) SendMessage(msg []byte) error {
 	}
 
 	log.Printf("[TIMING] [%s] Message %s sent to user %s via WebSocket at %v: %s", c.ID, messageData.MessageID, c.ID, time.Now(), messageData.Content)
+	
+	// Refresh presence on message delivery (user is active)
+	if c.ID != "" {
+		refreshCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		if err := c.Presence.Refresh(refreshCtx, c.ID); err != nil {
+			log.Printf("[PresenceRefresh] [%s] Failed to refresh presence after message delivery: %v", c.ID, err)
+		}
+		cancel()
+	}
+	
 	return nil
 }
 
@@ -235,13 +260,10 @@ func (c *Client) SendNotification(notification NotificationMessage) error {
 
 // triggerUndeliveredMessagesFetch calls orchestrator to fetch and republish undelivered messages
 // This is called after user is marked as online in Redis and subscription is confirmed
-// It only runs once per connection (tracked by undeliveredFetched flag)
+// It only runs once per connection (tracked by undeliveredFetched flag set via CompareAndSwap in Serve())
 func (c *Client) triggerUndeliveredMessagesFetch(ctx context.Context, token string) {
-	// Check if we've already fetched for this connection
-	if c.undeliveredFetched {
-		log.Printf("[Client] Skipping undelivered messages fetch for user %s - already fetched for this connection", c.ID)
-		return
-	}
+	// Note: The flag check is done in Serve() using CompareAndSwap to prevent multiple goroutines.
+	// We don't check here because the flag is already set to true by CompareAndSwap before this function is called.
 
 	log.Printf("[TIMING] [%s] Triggering undelivered messages fetch for user %s (subscription confirmed, user online) at %v", c.ID, c.ID, time.Now())
 
@@ -285,7 +307,7 @@ func (c *Client) triggerUndeliveredMessagesFetch(ctx context.Context, token stri
 	}
 
 	// Mark as fetched for this connection
-	c.undeliveredFetched = true
+	c.undeliveredFetched.Store(true)
 	log.Printf("[TIMING] [%s] Successfully triggered undelivered messages fetch for user %s (one-time per connection, HTTP call took %v)", c.ID, c.ID, httpDuration)
 
 	// Send initial notification with conversations count
@@ -339,4 +361,47 @@ func (c *Client) sendInitialNotification(ctx context.Context, token, orchestrato
 	}
 
 	log.Printf("[Client] Sent initial notification to user %s: %d conversations with undelivered messages", c.ID, countResponse.Count)
+}
+
+// refreshPresenceLoop periodically refreshes the presence TTL to keep the user marked as online
+// This runs in the background while the connection is active
+func (c *Client) refreshPresenceLoop(ctx context.Context) {
+	// Get TTL from PresenceStore (assuming it's RedisPresenceStore)
+	// Refresh at half the TTL interval to ensure we refresh before expiration
+	// Default to 15 seconds if we can't determine TTL
+	refreshInterval := 15 * time.Second
+	
+	if redisStore, ok := c.Presence.(*presence.RedisPresenceStore); ok {
+		// Refresh at half TTL to ensure we refresh before expiration
+		refreshInterval = redisStore.TTL / 2
+		if refreshInterval < 5*time.Second {
+			refreshInterval = 5 * time.Second // Minimum 5 seconds
+		}
+		log.Printf("[PresenceRefresh] [%s] Starting refresh loop with interval: %v (TTL/2)", c.ID, refreshInterval)
+	} else {
+		log.Printf("[PresenceRefresh] [%s] Using default refresh interval: %v", c.ID, refreshInterval)
+	}
+
+	ticker := time.NewTicker(refreshInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("[PresenceRefresh] [%s] Refresh loop stopped (context cancelled)", c.ID)
+			return
+		case <-ticker.C:
+			if c.ID == "" {
+				continue // Skip if user ID not set yet
+			}
+			
+			refreshCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			if err := c.Presence.Refresh(refreshCtx, c.ID); err != nil {
+				log.Printf("[PresenceRefresh] [%s] Failed to refresh presence: %v", c.ID, err)
+			} else {
+				log.Printf("[PresenceRefresh] [%s] Successfully refreshed presence TTL", c.ID)
+			}
+			cancel()
+		}
+	}
 }

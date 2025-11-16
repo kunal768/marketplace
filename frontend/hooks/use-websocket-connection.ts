@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { WebSocketClient } from '@/lib/websocket/client'
 import type { ConnectionState, Message, NotificationMessage } from '@/lib/websocket/types'
 import { setTokenUpdateCallback } from '@/lib/api/orchestrator'
+import { setGlobalWebSocketDisconnect, clearGlobalWebSocketDisconnect } from '@/lib/websocket/manager'
 
 const EVENTS_SERVER_URL = process.env.NEXT_PUBLIC_EVENTS_SERVER_URL || 'ws://localhost:8001/ws'
-const HEARTBEAT_INTERVAL = parseInt(process.env.NEXT_PUBLIC_WS_HEARTBEAT_INTERVAL || '5', 10)
 
 /**
  * Simple WebSocket connection hook with auto-connect.
@@ -21,13 +21,16 @@ export function useWebSocketConnection(
 ) {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
   const [messages, setMessages] = useState<Message[]>([])
-  const [lastHeartbeat, setLastHeartbeat] = useState<Date | null>(null)
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [notification, setNotification] = useState<NotificationMessage | null>(null)
 
   const clientRef = useRef<WebSocketClient | null>(null)
   const autoConnectAttemptedRef = useRef(false)
   const tokenUpdateCallbackRef = useRef<((newToken: string, newRefreshToken: string) => void) | null>(null)
+  const processedMessageIdsRef = useRef<Set<string>>(new Set())
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const reconnectAttemptsRef = useRef(0)
+  const lastDisconnectTimeRef = useRef<number>(0)
 
   // Set up token update callback for WebSocket client
   useEffect(() => {
@@ -87,12 +90,21 @@ export function useWebSocketConnection(
     }
 
     // We have credentials - create client if needed
-    if (!clientRef.current) {
+    // Only create new client if userId changes or client doesn't exist
+    // Don't recreate on token changes - just update the token
+    if (!clientRef.current || (clientRef.current && clientRef.current['userId'] !== userId)) {
+      // If userId changed, disconnect old client first
+      if (clientRef.current && clientRef.current['userId'] !== userId) {
+        console.log('[useWebSocketConnection] User changed, disconnecting old client')
+        clientRef.current.disconnect()
+        clientRef.current = null
+        processedMessageIdsRef.current.clear() // Clear processed messages for new user
+      }
+      
       console.log('[useWebSocketConnection] Creating client', { userId })
       
       const client = new WebSocketClient(
         EVENTS_SERVER_URL,
-        HEARTBEAT_INTERVAL,
         {
           onStateChange: (state) => {
             console.log('[useWebSocketConnection] State changed:', state)
@@ -100,17 +112,37 @@ export function useWebSocketConnection(
             if (state === 'connected') {
               setConnectionError(null)
               autoConnectAttemptedRef.current = false
+              reconnectAttemptsRef.current = 0 // Reset reconnect attempts on successful connection
+              // Clear any pending reconnect timeout
+              if (reconnectTimeoutRef.current) {
+                clearTimeout(reconnectTimeoutRef.current)
+                reconnectTimeoutRef.current = null
+              }
+            } else if (state === 'disconnected') {
+              // Track when connection was lost for backoff calculation
+              lastDisconnectTimeRef.current = Date.now()
             }
           },
           onMessage: (message) => {
-            setMessages((prev) => [...prev, message])
+            // Deduplicate messages by messageId to prevent duplicates during reconnections
+            if (!processedMessageIdsRef.current.has(message.messageId)) {
+              processedMessageIdsRef.current.add(message.messageId)
+              console.log('[useWebSocketConnection] Received new message:', message.messageId, 'from:', message.senderId, 'content:', message.content.substring(0, 50))
+              setMessages((prev) => {
+                // Double-check for duplicates (race condition protection)
+                if (prev.some(m => m.messageId === message.messageId)) {
+                  console.log('[useWebSocketConnection] Duplicate detected in state, skipping')
+                  return prev
+                }
+                return [...prev, message]
+              })
+            } else {
+              console.log('[useWebSocketConnection] Skipping duplicate message:', message.messageId)
+            }
           },
           onError: (error) => {
             console.error('[useWebSocketConnection] Error:', error)
             setConnectionError(error.message)
-          },
-          onHeartbeat: () => {
-            setLastHeartbeat(new Date())
           },
           onNotification: (notification) => {
             console.log('[useWebSocketConnection] Notification received:', notification)
@@ -120,8 +152,14 @@ export function useWebSocketConnection(
         tokenUpdateCallbackRef.current || undefined
       )
 
+      // Store userId for comparison
+      client['userId'] = userId
       clientRef.current = client
       console.log('[useWebSocketConnection] Client created successfully')
+    } else if (clientRef.current && token) {
+      // Update token if it changed (but userId is same)
+      clientRef.current['token'] = token
+      clientRef.current['refreshToken'] = refreshToken || null
     }
   }, [hasCredentials, userId, token])
 
@@ -132,9 +170,28 @@ export function useWebSocketConnection(
     }
 
     // Auto-connect if disconnected and haven't attempted yet
+    // Prevent rapid reconnections with exponential backoff
     if (connectionState === 'disconnected' && !autoConnectAttemptedRef.current) {
-      console.log('[useWebSocketConnection] Auto-connecting...', { userId, hasToken: !!token })
+      const now = Date.now()
+      const timeSinceLastDisconnect = now - lastDisconnectTimeRef.current
+      
+      // Minimum delay between reconnection attempts (exponential backoff)
+      const baseDelay = 1000 // 1 second base
+      const maxDelay = 30000 // 30 seconds max
+      const delay = Math.min(baseDelay * Math.pow(2, reconnectAttemptsRef.current), maxDelay)
+      
+      // If we just disconnected, wait before reconnecting
+      if (timeSinceLastDisconnect < delay && lastDisconnectTimeRef.current > 0) {
+        console.log(`[useWebSocketConnection] Waiting ${delay - timeSinceLastDisconnect}ms before reconnecting (attempt ${reconnectAttemptsRef.current + 1})`)
+        reconnectTimeoutRef.current = setTimeout(() => {
+          autoConnectAttemptedRef.current = false
+        }, delay - timeSinceLastDisconnect)
+        return
+      }
+
+      console.log('[useWebSocketConnection] Auto-connecting...', { userId, hasToken: !!token, attempt: reconnectAttemptsRef.current + 1 })
       autoConnectAttemptedRef.current = true
+      reconnectAttemptsRef.current++
 
       clientRef.current
         .connect(userId!, token!, refreshToken || null)
@@ -144,11 +201,20 @@ export function useWebSocketConnection(
         .catch((error) => {
           console.error('[useWebSocketConnection] Auto-connect failed:', error)
           setConnectionError(error instanceof Error ? error.message : 'Auto-connect failed')
-          // Allow retry after delay
-          setTimeout(() => {
+          // Allow retry after delay with exponential backoff
+          const retryDelay = Math.min(baseDelay * Math.pow(2, reconnectAttemptsRef.current), maxDelay)
+          reconnectTimeoutRef.current = setTimeout(() => {
             autoConnectAttemptedRef.current = false
-          }, 2000)
+          }, retryDelay)
         })
+    }
+
+    // Cleanup timeout on unmount or when connection succeeds
+    return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
     }
   }, [hasCredentials, userId, token, refreshToken, connectionState])
 
@@ -165,12 +231,16 @@ export function useWebSocketConnection(
       // Create client on-demand
       const client = new WebSocketClient(
         EVENTS_SERVER_URL,
-        HEARTBEAT_INTERVAL,
         {
           onStateChange: setConnectionState,
-          onMessage: (msg) => setMessages((prev) => [...prev, msg]),
+          onMessage: (msg) => {
+            // Deduplicate messages by messageId
+            if (!processedMessageIdsRef.current.has(msg.messageId)) {
+              processedMessageIdsRef.current.add(msg.messageId)
+              setMessages((prev) => [...prev, msg])
+            }
+          },
           onError: (err) => setConnectionError(err.message),
-          onHeartbeat: () => setLastHeartbeat(new Date()),
           onNotification: (notif) => setNotification(notif),
         },
         tokenUpdateCallbackRef.current || undefined
@@ -201,11 +271,30 @@ export function useWebSocketConnection(
 
   const disconnect = useCallback(() => {
     console.log('[useWebSocketConnection] Disconnect')
+    lastDisconnectTimeRef.current = Date.now()
+    reconnectAttemptsRef.current = 0 // Reset reconnect attempts on manual disconnect
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
     if (clientRef.current) {
       clientRef.current.disconnect()
     }
     autoConnectAttemptedRef.current = false
+    setConnectionState('disconnected')
   }, [])
+
+  // Register global disconnect function for logout
+  useEffect(() => {
+    if (hasCredentials) {
+      setGlobalWebSocketDisconnect(disconnect)
+      return () => {
+        clearGlobalWebSocketDisconnect()
+      }
+    } else {
+      clearGlobalWebSocketDisconnect()
+    }
+  }, [hasCredentials, disconnect])
 
   const sendMessage = useCallback(
     (recipientId: string, content: string) => {
@@ -236,36 +325,19 @@ export function useWebSocketConnection(
     [userId, connectionState]
   )
 
-  const sendHeartbeat = useCallback(() => {
-    if (!clientRef.current) {
-      return { success: false, error: 'Not connected' }
-    }
-    try {
-      clientRef.current.sendPresenceHeartbeat()
-      setLastHeartbeat(new Date())
-      return { success: true }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to send heartbeat',
-      }
-    }
-  }, [])
-
   const clearMessages = useCallback(() => {
     setMessages([])
+    processedMessageIdsRef.current.clear()
   }, [])
 
   return {
     connectionState,
     messages,
-    lastHeartbeat,
     connectionError,
     notification,
     connect,
     disconnect,
     sendMessage,
-    sendHeartbeat,
     clearMessages,
   }
 }

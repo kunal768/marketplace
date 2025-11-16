@@ -12,8 +12,6 @@ type Config struct {
 	RedisAddr           string
 	RedisPassword       string
 	RedisDB             int
-	WSHeartbeatSeconds  int
-	WSDeadSeconds       int
 	PresenceTTLSeconds  int
 	SkipAuth            bool
 	RabbitMQURL         string
@@ -64,8 +62,6 @@ func Load() Config {
 		RedisAddr:           getenv("REDIS_ADDR"),
 		RedisPassword:       getenvOptional("REDIS_PASSWORD"), // Optional: empty password is valid for Redis
 		RedisDB:             getenvInt("REDIS_DB"),
-		WSHeartbeatSeconds:  getenvInt("WS_HEARTBEAT_SECONDS"),
-		WSDeadSeconds:       getenvInt("WS_DEAD_SECONDS"),
 		PresenceTTLSeconds:  getenvInt("PRESENCE_TTL_SECONDS"),
 		RabbitMQURL:         getenv("RABBITMQ_URL"),
 		RabbitMQQueueName:   getenv("RABBITMQ_QUEUE_NAME"),

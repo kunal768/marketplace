@@ -11,6 +11,7 @@ import { Search, Plus, MessageSquare, User, Settings, LogOut, Menu, Shield } fro
 import { useState, useEffect } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useUnreadCount } from "@/hooks/use-unread-count"
+import { disconnectGlobalWebSocket } from "@/lib/websocket/manager"
 
 export function Navigation() {
   const router = useRouter()
@@ -51,7 +52,9 @@ export function Navigation() {
   }
 
   const handleLogout = () => {
-  
+    // Disconnect WebSocket before logout
+    disconnectGlobalWebSocket()
+    
     localStorage.removeItem("frontend-loginToken");
     localStorage.removeItem("frontend-refreshToken");
     localStorage.removeItem("frontend-user");

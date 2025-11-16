@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { orchestratorApi } from '@/lib/api/orchestrator'
-import { useWebSocketConnection } from './use-websocket-connection'
+import { useWebSocket } from '@/contexts/websocket-context'
 
 const STORAGE_KEY_PREFIX = 'frontend-conversationSeen-'
 const POLL_INTERVAL = 30000 // 30 seconds
@@ -24,7 +24,7 @@ export function useUnreadCount(
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const { notification, messages: wsMessages } = useWebSocketConnection(userId, token, refreshToken)
+  const { notification, messages: wsMessages } = useWebSocket()
   const processedMessageIdsRef = useRef<Set<string>>(new Set())
 
   // Get seen timestamp for a conversation from localStorage

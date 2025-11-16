@@ -4,6 +4,7 @@ import { Inter } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { GlobalAIAssistant } from "@/components/global-ai-assistant"
 import { Toaster } from "@/components/ui/toaster"
+import { WebSocketProvider } from "@/contexts/websocket-context"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -22,10 +23,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.className} font-sans antialiased`}>
-        {children}
-        <GlobalAIAssistant />
-        <Toaster />
-        <Analytics />
+        <WebSocketProvider>
+          {children}
+          <GlobalAIAssistant />
+          <Toaster />
+          <Analytics />
+        </WebSocketProvider>
       </body>
     </html>
   )

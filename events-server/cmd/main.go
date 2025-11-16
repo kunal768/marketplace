@@ -129,7 +129,7 @@ func handleConn(conn net.Conn, hub *wsx.Hub, pres presence.PresenceStore, authc 
 		conn.Close()
 	}()
 
-	client := wsx.NewClient(conn, hub, pres, authc, msgService, cfg.WSDeadSeconds)
+	client := wsx.NewClient(conn, hub, pres, authc, msgService)
 	client.Serve(context.Background())
 }
 

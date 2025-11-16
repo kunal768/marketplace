@@ -1,7 +1,6 @@
 import type {
   ConnectionState,
   AuthMessage,
-  PresenceMessage,
   ChatMessage,
   IncomingMessage,
   AuthAckMessage,
@@ -15,7 +14,6 @@ export interface WebSocketClientCallbacks {
   onStateChange?: (state: ConnectionState) => void
   onMessage?: (message: Message) => void
   onError?: (error: Error) => void
-  onHeartbeat?: () => void
   onNotification?: (notification: NotificationMessage) => void
 }
 
@@ -23,8 +21,6 @@ export class WebSocketClient {
   private ws: WebSocket | null = null
   private state: ConnectionState = 'disconnected'
   private callbacks: WebSocketClientCallbacks = {}
-  private heartbeatInterval: NodeJS.Timeout | null = null
-  private heartbeatIntervalSeconds: number
   private url: string
   private userId: string | null = null
   private token: string | null = null
@@ -36,12 +32,10 @@ export class WebSocketClient {
 
   constructor(
     url: string,
-    heartbeatIntervalSeconds: number = 30,
     callbacks: WebSocketClientCallbacks = {},
     onTokenUpdate?: (newToken: string, newRefreshToken: string) => void
   ) {
     this.url = url
-    this.heartbeatIntervalSeconds = heartbeatIntervalSeconds
     this.callbacks = callbacks
     this.onTokenUpdate = onTokenUpdate
   }
@@ -180,11 +174,7 @@ export class WebSocketClient {
               if (ack.status === 'success') {
                 this.authPending = false
                 console.log('[WebSocket] Auth successful, user:', ack.userId)
-                // Set state to connected FIRST, then start heartbeat
-                // This ensures heartbeat checks see 'connected' state
                 this.setState('connected')
-                // Start heartbeat after state is set to 'connected'
-                this.startHeartbeat()
                 if (this.connectResolve) {
                   this.connectResolve()
                   this.connectResolve = null
@@ -243,6 +233,7 @@ export class WebSocketClient {
                 type: incoming.data.type,
                 direction: 'received',
               }
+              console.log('[WebSocket] Received message via WebSocket:', message.messageId, 'from:', message.senderId, 'content:', message.content.substring(0, 50))
               this.callbacks.onMessage?.(message)
               return
             }
@@ -290,7 +281,6 @@ export class WebSocketClient {
           }
           
           console.log('[WebSocket] Connection closed', closeInfo, closeMessage)
-          this.stopHeartbeat()
           this.authPending = false
           
           // If auth was pending and connection closed, it likely failed
@@ -311,7 +301,6 @@ export class WebSocketClient {
 
   disconnect(): void {
     console.log('[WebSocket] Disconnecting...')
-    this.stopHeartbeat()
     this.authPending = false
     if (this.ws) {
       this.ws.close()
@@ -334,28 +323,7 @@ export class WebSocketClient {
     this.send(chatMessage)
   }
 
-  sendPresenceHeartbeat(): void {
-    if (this.state !== 'connected' || !this.ws) {
-      console.warn('[WebSocket] Cannot send heartbeat: state=', this.state, 'ws=', !!this.ws)
-      return
-    }
-
-    const presenceMessage: PresenceMessage = {
-      type: 'presence',
-    }
-    console.log('[WebSocket] Sending presence heartbeat')
-    try {
-      this.send(presenceMessage)
-      // Notify callback that heartbeat was sent (for UI updates)
-      if (this.callbacks.onHeartbeat) {
-        this.callbacks.onHeartbeat()
-      }
-    } catch (error) {
-      console.error('[WebSocket] Failed to send heartbeat:', error)
-    }
-  }
-
-  private send(message: AuthMessage | PresenceMessage | ChatMessage): void {
+  private send(message: AuthMessage | ChatMessage): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('WebSocket is not open')
     }
@@ -364,24 +332,6 @@ export class WebSocketClient {
     } catch (error) {
       console.error('[WebSocket] Failed to send message:', error)
       throw error
-    }
-  }
-
-  private startHeartbeat(): void {
-    this.stopHeartbeat()
-    console.log(`[WebSocket] Starting heartbeat interval: ${this.heartbeatIntervalSeconds}s`)
-    // Send first heartbeat immediately
-    this.sendPresenceHeartbeat()
-    // Then set up interval for subsequent heartbeats
-    this.heartbeatInterval = setInterval(() => {
-      this.sendPresenceHeartbeat()
-    }, this.heartbeatIntervalSeconds * 1000)
-  }
-
-  private stopHeartbeat(): void {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval)
-      this.heartbeatInterval = null
     }
   }
 

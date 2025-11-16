@@ -14,7 +14,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Send, Search, MoreVertical, Plus, Loader2, Trash2, Check } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
-import { useWebSocketConnection } from "@/hooks/use-websocket-connection"
+import { useWebSocket } from "@/contexts/websocket-context"
 import { useUnreadCount } from "@/hooks/use-unread-count"
 import { orchestratorApi } from "@/lib/api/orchestrator"
 import { getCurrentUserId } from "@/lib/utils/jwt"
@@ -49,7 +49,7 @@ export default function MessagesPage() {
     sendMessage: sendWebSocketMessage,
     messages: wsMessages,
     connectionState,
-  } = useWebSocketConnection(user?.user_id || null, token, refreshToken)
+  } = useWebSocket()
   const { markConversationAsSeen, conversations: conversationsFromHook } = useUnreadCount(
     user?.user_id || null,
     token,
@@ -166,8 +166,10 @@ export default function MessagesPage() {
         setMessages((prev) => {
           const existingMessages = prev[otherUserId] || []
           if (existingMessages.some((m) => m.messageId === chatMessage.messageId)) {
+            console.log('[MessagesPage] Skipping duplicate message:', chatMessage.messageId)
             return prev
           }
+          console.log('[MessagesPage] Adding new message:', chatMessage.messageId, 'from:', otherUserId, 'content:', chatMessage.content.substring(0, 50))
           return {
             ...prev,
             [otherUserId]: [...existingMessages, chatMessage],
