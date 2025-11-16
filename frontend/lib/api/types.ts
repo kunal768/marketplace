@@ -111,3 +111,18 @@ export interface FlagListingResponse {
   flagged_listing: FlaggedListing
 }
 
+export interface UpdateFlagListingRequest {
+  flag_id: number
+  status: FlagStatus
+  resolution_notes?: string
+}
+
+export interface UpdateFlagListingResponse {
+  flagged_listing: FlaggedListing
+}
+
+export interface DeleteFlagListingResponse {
+  status: string
+  message: string
+}
+

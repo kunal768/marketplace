@@ -7,10 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import { useAuth } from "@/hooks/use-auth"
 import { orchestratorApi } from "@/lib/api/orchestrator"
 import type { FlaggedListing, FlagStatus } from "@/lib/api/types"
-import { AlertCircle, Flag, Clock, User, FileText, ArrowLeft } from "lucide-react"
+import { AlertCircle, Flag, Clock, User, FileText, ArrowLeft, Edit, Trash2 } from "lucide-react"
 import Link from "next/link"
 
 export default function FlaggedListingsPage() {
@@ -21,6 +24,13 @@ export default function FlaggedListingsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<FlagStatus | "ALL">("ALL")
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
+  const [selectedFlag, setSelectedFlag] = useState<FlaggedListing | null>(null)
+  const [updateStatus, setUpdateStatus] = useState<FlagStatus>("OPEN")
+  const [updateResolutionNotes, setUpdateResolutionNotes] = useState<string>("")
+  const [updating, setUpdating] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -120,6 +130,78 @@ export default function FlaggedListingsPage() {
     // Price is stored in cents, convert to dollars
     if (!price || price === 0) return "$0.00"
     return `$${(price / 100).toFixed(2)}`
+  }
+
+  const handleOpenUpdateDialog = (flagged: FlaggedListing) => {
+    setSelectedFlag(flagged)
+    setUpdateStatus(flagged.status)
+    setUpdateResolutionNotes(flagged.resolution_notes || "")
+    setUpdateDialogOpen(true)
+  }
+
+  const handleUpdateFlagListing = async () => {
+    if (!selectedFlag || !token || !refreshToken) return
+
+    try {
+      setUpdating(true)
+      setError(null)
+      await orchestratorApi.updateFlagListing(token, refreshToken, selectedFlag.flag_id, updateStatus, updateResolutionNotes || undefined)
+      
+      // Refresh the flagged listings
+      const status = statusFilter === "ALL" ? undefined : statusFilter
+      const response = await orchestratorApi.getFlaggedListings(token, refreshToken, status)
+      // Always set the flagged listings, even if empty array
+      if (response && response.flagged_listings) {
+        setFlaggedListings(Array.isArray(response.flagged_listings) ? response.flagged_listings : [])
+      } else {
+        setFlaggedListings([])
+      }
+      
+      setUpdateDialogOpen(false)
+      setSelectedFlag(null)
+      setUpdateStatus("OPEN")
+      setUpdateResolutionNotes("")
+    } catch (err) {
+      console.error("Error updating flagged listing:", err)
+      const errorMessage = err instanceof Error ? err.message : "Failed to update flagged listing"
+      setError(errorMessage)
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const handleOpenDeleteDialog = (flagged: FlaggedListing) => {
+    setSelectedFlag(flagged)
+    setDeleteDialogOpen(true)
+  }
+
+  const handleDeleteFlagListing = async () => {
+    if (!selectedFlag || !token || !refreshToken) return
+
+    try {
+      setDeleting(true)
+      setError(null)
+      await orchestratorApi.deleteFlagListing(token, refreshToken, selectedFlag.flag_id)
+
+      // Refresh the flagged listings
+      const status = statusFilter === "ALL" ? undefined : statusFilter
+      const response = await orchestratorApi.getFlaggedListings(token, refreshToken, status)
+      // Always set the flagged listings, even if empty array
+      if (response && response.flagged_listings) {
+        setFlaggedListings(Array.isArray(response.flagged_listings) ? response.flagged_listings : [])
+      } else {
+        setFlaggedListings([])
+      }
+
+      setDeleteDialogOpen(false)
+      setSelectedFlag(null)
+    } catch (err) {
+      console.error("Error deleting flagged listing:", err)
+      const errorMessage = err instanceof Error ? err.message : "Failed to delete flagged listing"
+      setError(errorMessage)
+    } finally {
+      setDeleting(false)
+    }
   }
 
   if (!isHydrated || loading) {
@@ -307,12 +389,28 @@ export default function FlaggedListingsPage() {
                           )}
                         </div>
                       </div>
-                      <div className="pt-4">
+                      <div className="pt-4 space-y-2">
                         <Link href={`/listing/${flagged.listing.id}`}>
                           <Button variant="outline" className="w-full">
                             View Listing
                           </Button>
                         </Link>
+                        <Button
+                          variant="default"
+                          className="w-full"
+                          onClick={() => handleOpenUpdateDialog(flagged)}
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Update Status
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          className="w-full"
+                          onClick={() => handleOpenDeleteDialog(flagged)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete Flag
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -328,6 +426,104 @@ export default function FlaggedListingsPage() {
           </div>
         )}
       </div>
+
+      {/* Update Flag Dialog */}
+      <Dialog open={updateDialogOpen} onOpenChange={setUpdateDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Update Flagged Listing</DialogTitle>
+            <DialogDescription>
+              Update the status and add resolution notes for this flagged listing.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {selectedFlag && (
+              <div className="space-y-2">
+                <div>
+                  <Label htmlFor="listing-title">Listing</Label>
+                  <p className="text-sm font-medium mt-1">{selectedFlag.listing.title}</p>
+                  <p className="text-xs text-muted-foreground">Flag ID: {selectedFlag.flag_id}</p>
+                </div>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Select value={updateStatus} onValueChange={(value) => setUpdateStatus(value as FlagStatus)}>
+                <SelectTrigger id="status">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="OPEN">Open</SelectItem>
+                  <SelectItem value="UNDER_REVIEW">Under Review</SelectItem>
+                  <SelectItem value="RESOLVED">Resolved</SelectItem>
+                  <SelectItem value="DISMISSED">Dismissed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="resolution-notes">Resolution Notes</Label>
+              <Textarea
+                id="resolution-notes"
+                placeholder="Enter resolution notes (optional)"
+                value={updateResolutionNotes}
+                onChange={(e) => setUpdateResolutionNotes(e.target.value)}
+                rows={5}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUpdateDialogOpen(false)} disabled={updating}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateFlagListing} disabled={updating}>
+              {updating ? "Updating..." : "Update"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Flag Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Delete Flagged Listing</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this flagged listing? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {selectedFlag && (
+              <div className="space-y-2">
+                <div>
+                  <Label>Listing</Label>
+                  <p className="text-sm font-medium mt-1">{selectedFlag.listing.title}</p>
+                  <p className="text-xs text-muted-foreground">Flag ID: {selectedFlag.flag_id}</p>
+                </div>
+                <div>
+                  <Label>Status</Label>
+                  <Badge variant={getStatusBadgeVariant(selectedFlag.status)} className="mt-1">
+                    {selectedFlag.status}
+                  </Badge>
+                </div>
+                <div>
+                  <Label>Reason</Label>
+                  <Badge variant={getReasonBadgeVariant(selectedFlag.reason)} className="mt-1">
+                    {selectedFlag.reason}
+                  </Badge>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteFlagListing} disabled={deleting}>
+              {deleting ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

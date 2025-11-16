@@ -549,6 +549,7 @@ func (e *Endpoints) UpdateFlagListingHandler(w http.ResponseWriter, r *http.Requ
 			Error:   "Invalid request",
 			Message: "Flag ID is required",
 		})
+		return
 	}
 
 	flagID, err := strconv.ParseInt(flagIDStr, 10, 64)
@@ -591,6 +592,58 @@ func (e *Endpoints) UpdateFlagListingHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	httplib.WriteJSON(w, http.StatusOK, response.FlaggedListing)
+}
+
+// DeleteFlagListingHandler handles deleting a flagged listing (admin only)
+func (e *Endpoints) DeleteFlagListingHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract ID from URL path using PathValue (Go 1.22+)
+	flagIDStr := r.PathValue("flag_id")
+	if flagIDStr == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Flag ID is required",
+		})
+		return
+	}
+
+	flagID, err := strconv.ParseInt(flagIDStr, 10, 64)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Invalid flag ID format",
+		})
+		return
+	}
+
+	req := DeleteFlagListingRequest{FlagID: flagID}
+
+	// Call service
+	response, err := e.service.DeleteFlagListing(r.Context(), req)
+	if err != nil {
+		// Check if error is due to admin access requirement
+		if err.Error() == "admin access required" {
+			httplib.WriteJSON(w, http.StatusForbidden, ErrorResponse{
+				Error:   "Forbidden",
+				Message: "Admin access required",
+			})
+			return
+		}
+		// Check if flag not found
+		if err.Error() == "flag not found" {
+			httplib.WriteJSON(w, http.StatusNotFound, ErrorResponse{
+				Error:   "Not found",
+				Message: "Flag not found",
+			})
+			return
+		}
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to delete flagged listing",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, response)
 }
 
 // adminOnlyMiddleware checks if the user has admin role
@@ -659,6 +712,8 @@ func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 
 	// Admin-only routes
 	mux.Handle("GET /api/listings/flagged", adminProtected(http.HandlerFunc(e.GetFlaggedListingsHandler)))
+	mux.Handle("PATCH /api/listings/flag/{flag_id}", adminProtected(http.HandlerFunc(e.UpdateFlagListingHandler)))
+	mux.Handle("DELETE /api/listings/flag/{flag_id}", adminProtected(http.HandlerFunc(e.DeleteFlagListingHandler)))
 	mux.Handle("GET /api/listings/by-user-id", adminProtected(http.HandlerFunc(e.GetListingsByUserIDHandler)))
 }
 

@@ -15,6 +15,9 @@ import type {
   FlagListingRequest,
   FlagListingResponse,
   FlagReason,
+  UpdateFlagListingRequest,
+  UpdateFlagListingResponse,
+  DeleteFlagListingResponse,
 } from "./types"
 import { isTokenExpired } from "@/lib/utils/jwt"
 
@@ -808,6 +811,106 @@ export const orchestratorApi = {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(body),
+        })
+      },
+    )
+  },
+
+  /**
+   * Update a flagged listing (admin only)
+   * @param token - Access token
+   * @param refreshToken - Refresh token
+   * @param flagId - Flag ID to update
+   * @param status - New status for the flag
+   * @param resolutionNotes - Optional resolution notes
+   * @returns Updated flagged listing response
+   */
+  async updateFlagListing(
+    token: string,
+    refreshToken: string | null,
+    flagId: number,
+    status: FlagStatus,
+    resolutionNotes?: string,
+  ): Promise<UpdateFlagListingResponse> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/flag/${flagId}`
+
+    const body: UpdateFlagListingRequest = {
+      flag_id: flagId,
+      status,
+      resolution_notes: resolutionNotes,
+    }
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<UpdateFlagListingResponse>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        })
+      },
+    )
+  },
+
+  /**
+   * Delete a flagged listing (admin only)
+   * @param token - Access token
+   * @param refreshToken - Refresh token
+   * @param flagId - Flag ID to delete
+   * @returns Delete response
+   */
+  async deleteFlagListing(
+    token: string,
+    refreshToken: string | null,
+    flagId: number,
+  ): Promise<DeleteFlagListingResponse> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/flag/${flagId}`
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<DeleteFlagListingResponse>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
         })
       },
     )

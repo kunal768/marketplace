@@ -227,3 +227,14 @@ type UpdateFlagListingRequest struct {
 type UpdateFlagListingResponse struct {
 	FlaggedListing FlaggedListing `json:"flagged_listing"`
 }
+
+// DeleteFlagListingRequest for deleting a flagged listing (admin only)
+type DeleteFlagListingRequest struct {
+	FlagID int64 `json:"flag_id"`
+}
+
+// DeleteFlagListingResponse returns deletion status
+type DeleteFlagListingResponse struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}

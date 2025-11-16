@@ -568,3 +568,24 @@ func (s *Store) FlagListing(ctx context.Context, listingID int64, reporterUserID
 	log.Println("Flag created successfully for listing:", listingID)
 	return fl, nil
 }
+
+// DeleteFlagListing deletes a flagged listing (admin only)
+func (s *Store) DeleteFlagListing(ctx context.Context, flagID int64) error {
+	// First verify the flag exists
+	var exists bool
+	err := s.P.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM flagged_listings WHERE id=$1)`, flagID).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("failed to verify flag: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("flag not found")
+	}
+
+	// Delete the flag
+	_, err = s.P.Exec(ctx, `DELETE FROM flagged_listings WHERE id=$1`, flagID)
+	if err != nil {
+		return fmt.Errorf("failed to delete flag: %w", err)
+	}
+
+	return nil
+}

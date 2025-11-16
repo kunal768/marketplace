@@ -514,3 +514,45 @@ func (h *Handlers) UpdateFlagListingHandler(w http.ResponseWriter, r *http.Reque
 
 	platform.JSON(w, http.StatusCreated, flaggedListing)
 }
+
+// DeleteFlagListingHandler handles deleting a flagged listing (admin only)
+func (h *Handlers) DeleteFlagListingHandler(w http.ResponseWriter, r *http.Request) {
+	// Validate user is authenticated and get role
+	_, userRole, err := common.ValidateUserAndRoleAuthWithRole(w, r)
+	if err != nil {
+		return
+	}
+
+	// Check if user is admin
+	if userRole != string(httplib.ADMIN) {
+		platform.Error(w, http.StatusForbidden, "admin access required")
+		return
+	}
+
+	// Get flag ID from URL path
+	flagIDStr := chi.URLParam(r, "flag_id")
+	if flagIDStr == "" {
+		platform.Error(w, http.StatusBadRequest, "flag ID is required")
+		return
+	}
+
+	flagID, err := strconv.ParseInt(flagIDStr, 10, 64)
+	if err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid flag ID")
+		return
+	}
+
+	// Delete the flag
+	err = h.S.DeleteFlagListing(r.Context(), flagID)
+	if err != nil {
+		if err.Error() == "flag not found" {
+			platform.Error(w, http.StatusNotFound, "flag not found")
+			return
+		}
+		log.Printf("Error deleting flagged listing: %v", err)
+		platform.Error(w, http.StatusInternalServerError, "failed to delete flagged listing")
+		return
+	}
+
+	platform.JSON(w, http.StatusOK, map[string]string{"status": "deleted", "message": "Flagged listing deleted successfully"})
+}

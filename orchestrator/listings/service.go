@@ -39,6 +39,7 @@ type Service interface {
 	FetchFlaggedListings(ctx context.Context, req FetchFlaggedListingsRequest) (*FetchFlaggedListingsResponse, error)
 	FlagListing(ctx context.Context, req FlagListingRequest) (*FlagListingResponse, error)
 	UpdateFlagListing(ctx context.Context, req UpdateFlagListingRequest) (*UpdateFlagListingResponse, error)
+	DeleteFlagListing(ctx context.Context, req DeleteFlagListingRequest) (*DeleteFlagListingResponse, error)
 }
 
 func NewListingService(baseUrl string, sharedSecret string) Service {
@@ -707,7 +708,8 @@ func (s *svc) UpdateFlagListing(ctx context.Context, req UpdateFlagListingReques
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	// Listing-service returns StatusCreated for updates, but StatusOK is also acceptable
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
 	}
@@ -718,4 +720,53 @@ func (s *svc) UpdateFlagListing(ctx context.Context, req UpdateFlagListingReques
 	}
 
 	return &UpdateFlagListingResponse{FlaggedListing: flaggedListing}, nil
+}
+
+func (s *svc) DeleteFlagListing(ctx context.Context, req DeleteFlagListingRequest) (*DeleteFlagListingResponse, error) {
+	// Extract and validate user authentication
+	userID, roleID, err := s.extractUserAndRole(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if user is admin
+	if roleID != string(httplib.ADMIN) {
+		return nil, fmt.Errorf("admin access required")
+	}
+
+	fullURL := fmt.Sprintf("%s/listings/flag/%d", s.config.URL, req.FlagID)
+	httpReq, err := http.NewRequestWithContext(ctx, "DELETE", fullURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("X-User-ID", userID)
+	httpReq.Header.Set("X-Role-ID", roleID)
+
+	resp, err := s.config.Client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("flag not found")
+		}
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &DeleteFlagListingResponse{
+		Status:  result.Status,
+		Message: result.Message,
+	}, nil
 }
