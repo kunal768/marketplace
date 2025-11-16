@@ -68,6 +68,7 @@ export default function MessagesPage() {
   const [isSearching, setIsSearching] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const hasProcessedSessionStorage = useRef(false)
 
   useEffect(() => {
     if (isHydrated && !isAuthenticated) {
@@ -95,6 +96,59 @@ export default function MessagesPage() {
 
     fetchConversations()
   }, [isAuthenticated, token, refreshToken])
+
+  // Handle UUID from sessionStorage (for Contact Seller button)
+  useEffect(() => {
+    if (!isAuthenticated || !token || !refreshToken || !user || loading || hasProcessedSessionStorage.current) return
+
+    const userIdFromStorage = sessionStorage.getItem('openConversationWith')
+    if (userIdFromStorage) {
+      hasProcessedSessionStorage.current = true
+      sessionStorage.removeItem('openConversationWith')
+      
+      const existingConversation = conversations.find((conv) => conv.otherUserId === userIdFromStorage)
+      
+      if (existingConversation) {
+        setSelectedConversation(existingConversation)
+        markConversationAsSeen(existingConversation.otherUserId)
+      } else {
+        // Try to fetch user details and create new conversation
+        orchestratorApi.getUserById(token, refreshToken, userIdFromStorage)
+          .then(userData => {
+            const newConversation: Conversation = {
+              otherUserId: userIdFromStorage,
+              otherUserName: userData.user_name,
+              lastMessage: "Start a conversation",
+              lastTimestamp: new Date().toISOString(),
+              unreadCount: 0,
+              isLastFromMe: false,
+            }
+            setConversations((prev) => [newConversation, ...prev])
+            setSelectedConversation(newConversation)
+            setMessages((prev) => ({ ...prev, [userIdFromStorage]: [] }))
+          })
+          .catch(error => {
+            // Silently handle 404 errors (user not found) - this is expected in some cases
+            // Only log non-404 errors for debugging
+            if (!(error instanceof Error && (error.message.includes("404") || error.message.includes("not found")))) {
+              console.error('[Messages] Failed to fetch user details:', error)
+            }
+            // Still create conversation even if user fetch fails
+            const newConversation: Conversation = {
+              otherUserId: userIdFromStorage,
+              otherUserName: undefined,
+              lastMessage: "Start a conversation",
+              lastTimestamp: new Date().toISOString(),
+              unreadCount: 0,
+              isLastFromMe: false,
+            }
+            setConversations((prev) => [newConversation, ...prev])
+            setSelectedConversation(newConversation)
+            setMessages((prev) => ({ ...prev, [userIdFromStorage]: [] }))
+          })
+      }
+    }
+  }, [isAuthenticated, token, refreshToken, user, loading, conversations, markConversationAsSeen])
 
   useEffect(() => {
     if (!isAuthenticated || !token || !selectedConversation) return
@@ -322,7 +376,6 @@ export default function MessagesPage() {
     setSearchQuery("")
     setSearchResults([])
   }
-
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp)
@@ -562,18 +615,22 @@ export default function MessagesPage() {
         <DialogContent className="sm:max-w-2xl max-h-[80vh] bg-card/95 backdrop-blur-xl border-2 border-border/50 shadow-2xl">
           <DialogHeader>
             <DialogTitle>Start New Chat</DialogTitle>
-            <DialogDescription>Search for a user by name to start a conversation</DialogDescription>
+            <DialogDescription>Search for a user by UUID to start a conversation</DialogDescription>
           </DialogHeader>
 
           <Command className="rounded-lg border min-h-[400px]" shouldFilter={false}>
-            <CommandInput placeholder="Search users by name..." value={searchQuery} onValueChange={setSearchQuery} />
+            <CommandInput placeholder="Enter user UUID..." value={searchQuery} onValueChange={setSearchQuery} />
             <CommandList>
               {isSearching ? (
                 <div className="flex items-center justify-center p-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               ) : searchQuery && searchResults.length === 0 ? (
-                <CommandEmpty>No users found</CommandEmpty>
+                <CommandEmpty>
+                  {/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(searchQuery.trim())
+                    ? "No user found with this UUID"
+                    : "No users found. Try searching with a UUID."}
+                </CommandEmpty>
               ) : searchResults.length > 0 ? (
                 <CommandGroup heading="Users">
                   {searchResults.map((user) => (
@@ -584,17 +641,17 @@ export default function MessagesPage() {
                     >
                       <Avatar className="h-12 w-12">
                         <AvatarImage src="/placeholder.svg?height=48&width=48" />
-                        <AvatarFallback>{user.user_name[0]}</AvatarFallback>
+                        <AvatarFallback>{user.user_id}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1">
-                        <p className="font-semibold">{user.user_name}</p>
+                        <p className="font-semibold">User ({user.user_id.substring(0, 7)})</p>
                         <p className="text-sm text-muted-foreground">{user.email}</p>
                       </div>
                     </CommandItem>
                   ))}
                 </CommandGroup>
               ) : (
-                <div className="p-8 text-center text-sm text-muted-foreground">Start typing to search for users</div>
+                <div className="p-8 text-center text-sm text-muted-foreground">Enter a user UUID to start a conversation</div>
               )}
             </CommandList>
           </Command>

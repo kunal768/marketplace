@@ -471,7 +471,10 @@ export default function ListingDetailPage() {
                       <Button
                         className="w-full h-14 text-base font-semibold magnetic-button"
                         size="lg"
-                        onClick={() => router.push(`/messages?user=${listing.user_id}`)}
+                        onClick={() => {
+                          sessionStorage.setItem('openConversationWith', listing.user_id)
+                          router.push('/messages')
+                        }}
                       >
                         <MessageSquare className="mr-2 h-5 w-5" />
                         Contact Seller

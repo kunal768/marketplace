@@ -358,6 +358,33 @@ export const orchestratorApi = {
     })
   },
 
+
+  async getUserById(token: string, refreshToken: string | null, userId: string): Promise<User> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const makeRequest = () =>
+      fetch(`${ORCHESTRATOR_URL}/api/users/${userId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<User>(response, refreshToken, tokenUpdateCallback || undefined, async () => {
+      const newToken = await getValidToken(refreshToken)
+      return fetch(`${ORCHESTRATOR_URL}/api/users/${userId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${newToken || validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+    })
+  },
+
   async getFlaggedListings(
     token: string,
     refreshToken: string | null,
@@ -950,6 +977,113 @@ export const orchestratorApi = {
             Authorization: `Bearer ${newToken || validToken}`,
             "Content-Type": "application/json",
           },
+        })
+      },
+    )
+  },
+
+  /**
+   * Upload media files to get SAS URLs for direct Azure Blob Storage upload
+   * @param token - Access token
+   * @param refreshToken - Refresh token
+   * @param files - Array of File objects to upload
+   * @returns Upload response with SAS URLs and permanent public URLs
+   */
+  async uploadMedia(
+    token: string,
+    refreshToken: string | null,
+    files: File[],
+  ): Promise<{ message: string; uploads: Array<{ sas_url: string; permanent_public_url: string; blob_name: string }> }> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/upload`
+
+    // Create FormData with files
+    const formData = new FormData()
+    files.forEach((file) => {
+      formData.append("media", file)
+    })
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          // Don't set Content-Type - browser will set it with boundary for FormData
+        },
+        body: formData,
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<{ message: string; uploads: Array<{ sas_url: string; permanent_public_url: string; blob_name: string }> }>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        const retryFormData = new FormData()
+        files.forEach((file) => {
+          retryFormData.append("media", file)
+        })
+        return fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+          },
+          body: retryFormData,
+        })
+      },
+    )
+  },
+
+  /**
+   * Add media URLs to a listing
+   * @param token - Access token
+   * @param refreshToken - Refresh token
+   * @param listingId - Listing ID
+   * @param mediaUrls - Array of permanent public URLs
+   * @returns Success response
+   */
+  async addMediaURL(
+    token: string,
+    refreshToken: string | null,
+    listingId: number,
+    mediaUrls: string[],
+  ): Promise<{ message: string; count: number }> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/add-media-url/${listingId}`
+
+    const body = {
+      media_urls: mediaUrls,
+    }
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<{ message: string; count: number }>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
         })
       },
     )

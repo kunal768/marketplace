@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Navigation } from "@/components/navigation"
 import { Button } from "@/components/ui/button"
@@ -23,16 +23,34 @@ export default function CreateListingPage() {
   const { token, isAuthenticated, isHydrated } = useAuth()
   const [refreshToken, setRefreshToken] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState("")
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
 
-  const [images, setImages] = useState<string[]>([])
+  // Store files with preview URLs
+  interface ImageFile {
+    file: File
+    preview: string
+  }
+
+  const [images, setImages] = useState<ImageFile[]>([])
+  const imagesRef = useRef<ImageFile[]>([])
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     price: "",
     category: "",
+    condition: "",
+    location: "",
   })
+
+  const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB in bytes
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    imagesRef.current = images
+  }, [images])
 
   // Get refresh token from localStorage
   useEffect(() => {
@@ -50,14 +68,81 @@ export default function CreateListingPage() {
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
-    if (files) {
-      const newImages = Array.from(files).map((file) => URL.createObjectURL(file))
-      setImages([...images, ...newImages].slice(0, 5))
+    if (!files) return
+
+    const newFiles: ImageFile[] = []
+    const errors: string[] = []
+
+    Array.from(files).forEach((file) => {
+      // Check file size (20MB limit)
+      if (file.size > MAX_FILE_SIZE) {
+        errors.push(`${file.name} is too large. Maximum size is 20MB.`)
+        return
+      }
+
+      // Check if it's an image
+      if (!file.type.startsWith("image/")) {
+        errors.push(`${file.name} is not an image file.`)
+        return
+      }
+
+      // Check if we've reached the limit
+      if (images.length + newFiles.length >= 5) {
+        errors.push("Maximum 5 photos allowed.")
+        return
+      }
+
+      newFiles.push({
+        file,
+        preview: URL.createObjectURL(file),
+      })
+    })
+
+    if (errors.length > 0) {
+      toast({
+        title: "Upload Error",
+        description: errors.join(" "),
+        variant: "destructive",
+      })
     }
+
+    if (newFiles.length > 0) {
+      setImages([...images, ...newFiles].slice(0, 5))
+      setError(null)
+    }
+
+    // Reset input so same file can be selected again
+    e.target.value = ""
   }
 
   const removeImage = (index: number) => {
+    const imageToRemove = images[index]
+    // Revoke object URL to free memory
+    URL.revokeObjectURL(imageToRemove.preview)
     setImages(images.filter((_, i) => i !== index))
+  }
+
+  // Cleanup object URLs on unmount
+  useEffect(() => {
+    return () => {
+      imagesRef.current.forEach((img) => URL.revokeObjectURL(img.preview))
+    }
+  }, [])
+
+  // Helper function to upload file to Azure Blob Storage using SAS URL
+  const uploadFileToAzure = async (file: File, sasUrl: string, contentType: string): Promise<void> => {
+    const response = await fetch(sasUrl, {
+      method: "PUT",
+      headers: {
+        "x-ms-blob-type": "BlockBlob",
+        "Content-Type": contentType,
+      },
+      body: file,
+    })
+
+    if (!response.ok && response.status !== 201 && response.status !== 202) {
+      throw new Error(`Failed to upload file to Azure: ${response.status} ${response.statusText}`)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -100,8 +185,19 @@ export default function CreateListingPage() {
       return
     }
 
+    // Validate photos are mandatory
+    if (images.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "At least one photo is required",
+        variant: "destructive",
+      })
+      return
+    }
+
     try {
       setSubmitting(true)
+      setUploading(true)
       setError(null)
 
       // Convert price from dollars to cents
@@ -110,7 +206,8 @@ export default function CreateListingPage() {
       // Convert frontend category to backend category
       const backendCategory = mapDisplayToCategory(formData.category)
 
-      // Create the listing
+      // Step 1: Create the listing first to get listing ID
+      setUploadProgress("Creating listing...")
       const createdListing = await orchestratorApi.createListing(token, refreshToken, {
         title: formData.title.trim(),
         description: formData.description.trim() || undefined,
@@ -118,13 +215,47 @@ export default function CreateListingPage() {
         category: backendCategory,
       })
 
+      // Step 2: Upload photos one by one
+      const permanentUrls: string[] = []
+
+      for (let i = 0; i < images.length; i++) {
+        const imageFile = images[i]
+        setUploadProgress(`Uploading photo ${i + 1} of ${images.length}...`)
+
+        try {
+          // Get SAS URL for this file
+          const uploadResponse = await orchestratorApi.uploadMedia(token, refreshToken, [imageFile.file])
+
+          if (uploadResponse.uploads.length === 0) {
+            throw new Error(`No upload URLs returned for photo ${i + 1}`)
+          }
+
+          const uploadInfo = uploadResponse.uploads[0]
+
+          // Upload file to Azure Blob Storage using SAS URL
+          const contentType = imageFile.file.type || "image/jpeg"
+          await uploadFileToAzure(imageFile.file, uploadInfo.sas_url, contentType)
+
+          // Collect permanent public URL
+          if (uploadInfo.permanent_public_url) {
+            permanentUrls.push(uploadInfo.permanent_public_url)
+          }
+        } catch (err) {
+          console.error(`Error uploading photo ${i + 1}:`, err)
+          throw new Error(`Failed to upload photo ${i + 1}: ${err instanceof Error ? err.message : "Unknown error"}`)
+        }
+      }
+
+      // Step 3: Save all permanent URLs to the listing
+      if (permanentUrls.length > 0) {
+        setUploadProgress("Saving photos to listing...")
+        await orchestratorApi.addMediaURL(token, refreshToken, createdListing.id, permanentUrls)
+      }
+
       toast({
         title: "Success",
-        description: "Listing created successfully!",
+        description: "Listing created successfully with photos!",
       })
-
-      // TODO: Handle image uploads if needed (currently images are stored locally only)
-      // For now, images would need to be uploaded separately after listing creation
 
       // Navigate to the new listing detail page
       router.push(`/listing/${createdListing.id}`)
@@ -139,6 +270,8 @@ export default function CreateListingPage() {
       })
     } finally {
       setSubmitting(false)
+      setUploading(false)
+      setUploadProgress("")
     }
   }
 
@@ -163,6 +296,23 @@ export default function CreateListingPage() {
     <div className="min-h-screen bg-background">
       <Navigation />
 
+      {/* Upload overlay */}
+      {uploading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <Card className="max-w-md w-full mx-4">
+            <CardContent className="pt-6">
+              <div className="flex flex-col items-center justify-center space-y-4">
+                <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                <div className="text-center">
+                  <p className="font-semibold text-lg">{uploadProgress || "Processing..."}</p>
+                  <p className="text-sm text-muted-foreground mt-2">Please wait while we upload your photos</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <div className="container mx-auto px-4 py-8">
         <div className="mx-auto max-w-3xl">
           <div className="mb-10 animate-float-in-up">
@@ -174,11 +324,18 @@ export default function CreateListingPage() {
             <div className="space-y-6">
               <Card className="premium-card animate-scale-in-bounce">
                 <CardHeader>
-                  <CardTitle className="text-xl">Photos</CardTitle>
-                  <CardDescription className="text-base">Add up to 5 photos of your item (image upload coming soon)</CardDescription>
+                  <CardTitle className="text-xl">Photos *</CardTitle>
+                  <CardDescription className="text-base">
+                    Add at least 1 photo (up to 5). Maximum file size: 20MB per photo.
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
+                    {images.length === 0 && (
+                      <div className="rounded-lg border-2 border-dashed border-destructive/50 bg-destructive/5 p-4 text-center">
+                        <p className="text-sm text-destructive font-medium">At least one photo is required</p>
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                       {images.map((image, index) => (
                         <div
@@ -186,7 +343,7 @@ export default function CreateListingPage() {
                           className="relative aspect-square overflow-hidden rounded-xl border-2 border-border transition-all hover:border-primary"
                         >
                           <img
-                            src={image || "/placeholder.svg"}
+                            src={image.preview || "/placeholder.svg"}
                             alt={`Upload ${index + 1}`}
                             className="h-full w-full object-cover"
                           />
@@ -196,13 +353,17 @@ export default function CreateListingPage() {
                             size="icon"
                             className="absolute right-2 top-2 h-8 w-8 magnetic-button"
                             onClick={() => removeImage(index)}
+                            disabled={uploading}
                           >
                             <X className="h-4 w-4" />
                           </Button>
+                          <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
+                            {(image.file.size / (1024 * 1024)).toFixed(2)} MB
+                          </div>
                         </div>
                       ))}
                       {images.length < 5 && (
-                        <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/50 transition-all hover:bg-muted hover:border-primary">
+                        <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/50 transition-all hover:bg-muted hover:border-primary disabled:opacity-50 disabled:cursor-not-allowed">
                           <Upload className="mb-2 h-10 w-10 text-muted-foreground" />
                           <span className="text-sm font-medium text-muted-foreground">Upload Photo</span>
                           <input
@@ -211,6 +372,7 @@ export default function CreateListingPage() {
                             multiple
                             className="hidden"
                             onChange={handleImageUpload}
+                            disabled={uploading}
                           />
                         </label>
                       )}
@@ -350,12 +512,12 @@ export default function CreateListingPage() {
                   type="submit"
                   size="lg"
                   className="flex-1 h-14 text-base font-semibold magnetic-button"
-                  disabled={submitting}
+                  disabled={submitting || uploading || images.length === 0}
                 >
-                  {submitting ? (
+                  {submitting || uploading ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Creating...
+                      {uploadProgress || "Creating..."}
                     </>
                   ) : (
                     <>
@@ -370,7 +532,7 @@ export default function CreateListingPage() {
                   size="lg"
                   className="h-14 px-8 magnetic-button bg-transparent"
                   onClick={() => router.back()}
-                  disabled={submitting}
+                  disabled={submitting || uploading}
                 >
                   Cancel
                 </Button>
