@@ -385,6 +385,32 @@ export const orchestratorApi = {
     })
   },
 
+  async deleteUser(token: string, refreshToken: string | null, userId: string): Promise<{ message: string }> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const makeRequest = () =>
+      fetch(`${ORCHESTRATOR_URL}/api/users/${userId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<{ message: string }>(response, refreshToken, tokenUpdateCallback || undefined, async () => {
+      const newToken = await getValidToken(refreshToken)
+      return fetch(`${ORCHESTRATOR_URL}/api/users/${userId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${newToken || validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+    })
+  },
+
   async getFlaggedListings(
     token: string,
     refreshToken: string | null,

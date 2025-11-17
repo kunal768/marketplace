@@ -59,17 +59,11 @@ type ErrorResponse struct {
 	Message string `json:"message"`
 }
 
-// User Search Request/Response
-type UserSearchResult struct {
-	UserId   string `json:"user_id"`
-	UserName string `json:"user_name"`
-}
-
 type SearchUsersResponse struct {
-	Users   []UserSearchResult `json:"users"`
-	Page    int                `json:"page"`
-	Limit   int                `json:"limit"`
-	HasMore bool               `json:"has_more"`
+	Users   []models.User `json:"users"`
+	Page    int           `json:"page"`
+	Limit   int           `json:"limit"`
+	HasMore bool          `json:"has_more"`
 }
 
 type UpdateUserRequest struct {
@@ -83,4 +77,8 @@ type UpdateUserRequest struct {
 type UpdateUserResponse struct {
 	Message string      `json:"message"`
 	User    models.User `json:"user"`
+}
+
+type DeleteUserResponse struct {
+	Message string `json:"message"`
 }
