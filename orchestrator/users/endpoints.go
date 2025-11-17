@@ -223,7 +223,7 @@ func (e *Endpoints) EventsVerifyHandler(w http.ResponseWriter, r *http.Request) 
 	httplib.WriteJSON(w, http.StatusOK, response)
 }
 
-// SearchUsersHandler handles searching users by user_id prefix (requires authentication)
+// SearchUsersHandler handles searching users by user ID, username, or email (requires authentication)
 func (e *Endpoints) SearchUsersHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from context (set by AuthMiddleware)
 	userID, ok := r.Context().Value(httplib.ContextKey("userId")).(string)
@@ -316,10 +316,76 @@ func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 
 	// All other routes require auth + role injection by default
 	mux.Handle("GET /api/users/profile", protected(http.HandlerFunc(e.GetUserHandler)))
+	mux.Handle("PUT /api/users/profile", protected(http.HandlerFunc(e.UpdateUserHandler)))
 	mux.Handle("GET /api/users/search", protected(http.HandlerFunc(e.SearchUsersHandler)))
+
+	// Admin-only routes: get user by ID and delete user
+	mux.Handle("GET /api/users/{id}", protected(http.HandlerFunc(e.GetUserByIDHandler)))
+	mux.Handle("DELETE /api/users/{id}", protected(http.HandlerFunc(e.DeleteUserHandler)))
 
 	// Events verification endpoint (requires auth but not role injection)
 	mux.Handle("POST /api/events/verify", httplib.AuthMiddleWare(httplib.JSONRequestDecoder(http.HandlerFunc(e.EventsVerifyHandler))))
+}
+
+func (e *Endpoints) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
+	var req UpdateUserRequest
+
+	// Decode request body
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request body",
+			Message: "Failed to decode request body",
+		})
+		return
+	}
+
+	// Validate request
+	if err := validateUpdateUserRequest(req); err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Validation error",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	// Call service
+	response, err := e.service.UpdateUser(r.Context(), req)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Update failed",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, response)
+}
+
+func validateUpdateUserRequest(req UpdateUserRequest) error {
+	if req.UserId == "" {
+		return fmt.Errorf("user ID is required")
+	}
+	if req.UserName == "" {
+		return fmt.Errorf("username is required")
+	}
+	if req.Email == "" {
+		return fmt.Errorf("email is required")
+	}
+	if !isValidEmail(req.Email) {
+		return fmt.Errorf("invalid email format")
+	}
+	/*
+		if req.Role == "" {
+			return fmt.Errorf("role is required")
+		}
+	*/
+	if req.Contact.Email == "" {
+		return fmt.Errorf("contact email is required")
+	}
+	if !isValidEmail(req.Contact.Email) {
+		return fmt.Errorf("invalid contact email format")
+	}
+	return nil
 }
 
 // validateSignupRequest validates signup request
@@ -366,4 +432,97 @@ func isValidEmail(email string) bool {
 	log.Println("Matched regex for email: ", matched)
 	log.Println("Suffix check: ", strings.HasSuffix(email, "@sjsu.edu"))
 	return matched && strings.HasSuffix(email, "@sjsu.edu")
+}
+
+// checkAdminRole checks if the current user is an admin
+func checkAdminRole(r *http.Request) (bool, string) {
+	userRole, ok := r.Context().Value(httplib.ContextKey("userRole")).(string)
+	if !ok || userRole != "0" {
+		return false, userRole
+	}
+	return true, userRole
+}
+
+// GetUserByIDHandler handles getting a user by ID (admin only)
+func (e *Endpoints) GetUserByIDHandler(w http.ResponseWriter, r *http.Request) {
+	// Check if user is admin
+	isAdmin, _ := checkAdminRole(r)
+	if !isAdmin {
+		httplib.WriteJSON(w, http.StatusForbidden, ErrorResponse{
+			Error:   "Forbidden",
+			Message: "Admin access required",
+		})
+		return
+	}
+
+	// Extract user ID from URL path
+	userID := r.PathValue("id")
+	if userID == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "User ID is required",
+		})
+		return
+	}
+
+	// Call service
+	user, err := e.service.GetUserByID(r.Context(), userID)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusNotFound, ErrorResponse{
+			Error:   "User not found",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, user)
+}
+
+// DeleteUserHandler handles deleting a user (admin only)
+func (e *Endpoints) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
+	// Check if user is admin
+	isAdmin, _ := checkAdminRole(r)
+	if !isAdmin {
+		httplib.WriteJSON(w, http.StatusForbidden, ErrorResponse{
+			Error:   "Forbidden",
+			Message: "Admin access required",
+		})
+		return
+	}
+
+	// Extract user ID from URL path
+	userID := r.PathValue("id")
+	if userID == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "User ID is required",
+		})
+		return
+	}
+
+	// Prevent admin from deleting themselves
+	currentUserID, ok := r.Context().Value(httplib.ContextKey("userId")).(string)
+	if ok && currentUserID == userID {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Cannot delete your own account",
+		})
+		return
+	}
+
+	// Call service
+	err := e.service.DeleteUser(r.Context(), userID)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Delete failed",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	response := DeleteUserResponse{
+		Message: "User deleted successfully",
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, response)
 }

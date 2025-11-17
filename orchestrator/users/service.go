@@ -3,6 +3,7 @@ package users
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,7 +23,9 @@ type Service interface {
 	Login(ctx context.Context, req LoginRequest) (*LoginResponse, error)
 	RefreshToken(ctx context.Context, req RefreshTokenRequest) (*RefreshTokenResponse, error)
 	GetUserByID(ctx context.Context, userID string) (*models.User, error)
-	SearchUsers(ctx context.Context, query string, excludeUserID string, page int, limit int) ([]UserSearchResult, error)
+	SearchUsers(ctx context.Context, query string, excludeUserID string, page int, limit int) ([]models.User, error)
+	UpdateUser(ctx context.Context, req UpdateUserRequest) (*UpdateUserResponse, error)
+	DeleteUser(ctx context.Context, userID string) error
 }
 
 func NewService(repo Repository, publisher queue.Publisher) Service {
@@ -251,10 +254,10 @@ func (s *svc) GetUserByID(ctx context.Context, userID string) (*models.User, err
 	return user, nil
 }
 
-// SearchUsers searches users by user_id prefix with pagination
-func (s *svc) SearchUsers(ctx context.Context, query string, excludeUserID string, page int, limit int) ([]UserSearchResult, error) {
-	// Validate query
-	if len(query) < 1 {
+// SearchUsers searches users by ID, username, or email with pagination
+func (s *svc) SearchUsers(ctx context.Context, query string, excludeUserID string, page int, limit int) ([]models.User, error) {
+	trimmedQuery := strings.TrimSpace(query)
+	if len(trimmedQuery) < 1 {
 		return nil, fmt.Errorf("query must be at least 1 character")
 	}
 
@@ -262,12 +265,65 @@ func (s *svc) SearchUsers(ctx context.Context, query string, excludeUserID strin
 	offset := (page - 1) * limit
 
 	// Call repository
-	results, err := s.repo.SearchUsers(ctx, query, excludeUserID, limit, offset)
+	results, err := s.repo.SearchUsers(ctx, trimmedQuery, excludeUserID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search users: %w", err)
 	}
 
 	return results, nil
+}
+
+func (s *svc) UpdateUser(ctx context.Context, req UpdateUserRequest) (*UpdateUserResponse, error) {
+	// Get user by ID
+	user, err := s.repo.GetUserByID(ctx, req.UserId)
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %w", err)
+	}
+
+	// Update user
+	user.UserName = req.UserName
+	user.Email = req.Email
+	//user.Role = req.Role
+	user.Contact = req.Contact
+
+	// Update user
+	updatedUser, err := s.repo.UpdateUser(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update user: %w", err)
+	}
+
+	return &UpdateUserResponse{
+		Message: "User updated successfully",
+		User:    *updatedUser,
+	}, nil
+}
+
+// DeleteUser deletes a user and all associated auth records
+func (s *svc) DeleteUser(ctx context.Context, userID string) error {
+	// Verify user exists
+	_, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("user not found: %w", err)
+	}
+
+	// Delete user login auth
+	if err := s.repo.DeleteUserLoginAuth(ctx, userID); err != nil {
+		// Log but don't fail if login auth doesn't exist
+		fmt.Printf("Warning: failed to delete user login auth for user %s: %v\n", userID, err)
+	}
+
+	// Delete user auth
+	if err := s.repo.DeleteUserAuth(ctx, userID); err != nil {
+		// Log but don't fail if auth doesn't exist
+		fmt.Printf("Warning: failed to delete user auth for user %s: %v\n", userID, err)
+	}
+
+	// Delete user
+	if err := s.repo.DeleteUser(ctx, userID); err != nil {
+		return fmt.Errorf("failed to delete user: %w", err)
+	}
+
+	return nil
 }
 
 // generateUserID generates a unique user ID

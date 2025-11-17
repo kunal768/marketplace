@@ -18,9 +18,9 @@ type Repository interface {
 	CreateUser(ctx context.Context, user *models.User) error
 	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
 	GetUserByID(ctx context.Context, userID string) (*models.User, error)
-	UpdateUser(ctx context.Context, user *models.User) error
+	UpdateUser(ctx context.Context, user *models.User) (*models.User, error)
 	DeleteUser(ctx context.Context, userID string) error
-	SearchUsers(ctx context.Context, query string, excludeUserID string, limit int, offset int) ([]UserSearchResult, error)
+	SearchUsers(ctx context.Context, query string, excludeUserID string, limit int, offset int) ([]models.User, error)
 
 	// UserAuth operations
 	CreateUserAuth(ctx context.Context, userAuth *models.UserAuth) error
@@ -134,28 +134,37 @@ func (r *repo) GetUserByID(ctx context.Context, userID string) (*models.User, er
 }
 
 // UpdateUser updates an existing user
-func (r *repo) UpdateUser(ctx context.Context, user *models.User) error {
+func (r *repo) UpdateUser(ctx context.Context, user *models.User) (*models.User, error) {
 	query := `
 		UPDATE users 
-		SET user_name = $2, email = $3, role = $4, contact = $5, updated_at = $6
+		SET user_name = $2, email = $3, contact = $4, updated_at = now()
 		WHERE user_id = $1
+		RETURNING user_id, user_name, email, contact, created_at, updated_at
 	`
 
 	contactJSON, err := json.Marshal(user.Contact)
 	if err != nil {
-		return fmt.Errorf("failed to marshal contact: %w", err)
+		return nil, fmt.Errorf("failed to marshal contact: %w", err)
 	}
-
-	_, err = r.db.Exec(ctx, query,
+	var updatedUser models.User
+	err = r.db.QueryRow(ctx, query,
 		user.UserId,
 		user.UserName,
 		user.Email,
-		user.Role,
 		contactJSON,
-		user.UpdatedAt,
+	).Scan(
+		&updatedUser.UserId,
+		&updatedUser.UserName,
+		&updatedUser.Email,
+		&updatedUser.Contact,
+		&updatedUser.CreatedAt,
+		&updatedUser.UpdatedAt,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update user: %w", err)
+	}
 
-	return err
+	return &updatedUser, nil
 }
 
 // DeleteUser deletes a user by ID
@@ -331,13 +340,16 @@ func (r *repo) DeleteUserLoginAuth(ctx context.Context, userID string) error {
 	return err
 }
 
-// SearchUsers searches users by user_id prefix with pagination
-func (r *repo) SearchUsers(ctx context.Context, query string, excludeUserID string, limit int, offset int) ([]UserSearchResult, error) {
+// SearchUsers searches users by ID, username, or email with pagination
+func (r *repo) SearchUsers(ctx context.Context, query string, excludeUserID string, limit int, offset int) ([]models.User, error) {
 	sqlQuery := `
-		SELECT user_id, user_name
+		SELECT user_id, user_name, email, role, contact, created_at, updated_at
 		FROM users
-		WHERE user_id::text LIKE $1 || '%'
-		AND user_id != $2
+		WHERE user_id != $2 AND (
+			user_id::text ILIKE $1 || '%' OR
+			user_name ILIKE '%' || $1 || '%' OR
+			email ILIKE '%' || $1 || '%'
+		)
 		ORDER BY user_name
 		LIMIT $3 OFFSET $4
 	`
@@ -348,11 +360,28 @@ func (r *repo) SearchUsers(ctx context.Context, query string, excludeUserID stri
 	}
 	defer rows.Close()
 
-	var results []UserSearchResult
+	var results []models.User
 	for rows.Next() {
-		var result UserSearchResult
-		if err := rows.Scan(&result.UserId, &result.UserName); err != nil {
+		var (
+			result      models.User
+			contactJSON []byte
+		)
+		if err := rows.Scan(
+			&result.UserId,
+			&result.UserName,
+			&result.Email,
+			&result.Role,
+			&contactJSON,
+			&result.CreatedAt,
+			&result.UpdatedAt,
+		); err != nil {
 			return nil, fmt.Errorf("failed to scan user result: %w", err)
+		}
+
+		if len(contactJSON) > 0 {
+			if err := json.Unmarshal(contactJSON, &result.Contact); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal contact for user %s: %w", result.UserId, err)
+			}
 		}
 		results = append(results, result)
 	}

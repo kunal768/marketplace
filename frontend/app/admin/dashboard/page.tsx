@@ -71,11 +71,11 @@ export default function AdminDashboardPage() {
       title: "User Management",
       description: "View and manage user accounts and permissions",
       icon: Users,
-      href: "#",
+      href: "/admin/users",
       color: "text-blue-500",
       bgColor: "bg-blue-500/10",
       borderColor: "border-blue-500/20",
-      disabled: true,
+      disabled: false,
     },
     {
       title: "Analytics",

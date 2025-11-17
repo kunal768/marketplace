@@ -10,7 +10,10 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { Edit, Trash2, MapPin, Mail, Calendar, Package, Filter } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/hooks/use-auth"
 import { orchestratorApi } from "@/lib/api/orchestrator"
 import type { Listing, User } from "@/lib/api/types"
@@ -46,6 +49,12 @@ export default function ProfilePage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [sortBy, setSortBy] = useState("recent")
   const [searchQuery, setSearchQuery] = useState("")
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editUserName, setEditUserName] = useState("")
+  const [editEmail, setEditEmail] = useState("")
+  const [editContactEmail, setEditContactEmail] = useState("")
+  const [updating, setUpdating] = useState(false)
+  const { toast } = useToast()
 
   // Get refresh token from localStorage
   useEffect(() => {
@@ -163,6 +172,84 @@ export default function ProfilePage() {
   const joinDate = user?.created_at || authUser?.created_at
   const formattedJoinDate = joinDate ? formatDate(joinDate) : ""
 
+  // Handle edit dialog open
+  const handleOpenEditDialog = () => {
+    if (user) {
+      setEditUserName(user.user_name)
+      setEditEmail(user.email)
+      setEditContactEmail(user.contact?.Email || user.email)
+      setEditDialogOpen(true)
+    }
+  }
+
+  // Handle update user
+  const handleUpdateUser = async () => {
+    if (!user || !token || !refreshToken) return
+
+    // Validate email format (must end with @sjsu.edu)
+    if (!editEmail.endsWith("@sjsu.edu")) {
+      toast({
+        title: "Validation Error",
+        description: "Email must be a valid @sjsu.edu address",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!editContactEmail.endsWith("@sjsu.edu")) {
+      toast({
+        title: "Validation Error",
+        description: "Contact email must be a valid @sjsu.edu address",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (editUserName.trim().length < 3 || editUserName.trim().length > 50) {
+      toast({
+        title: "Validation Error",
+        description: "Username must be between 3 and 50 characters",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setUpdating(true)
+      setError(null)
+
+      const response = await orchestratorApi.updateUser(token, refreshToken, {
+        user_id: user.user_id,
+        user_name: editUserName.trim(),
+        email: editEmail.trim(),
+        contact: {
+          Email: editContactEmail.trim(),
+        },
+      })
+
+      // Update local user state
+      setUser(response.user)
+
+      toast({
+        title: "Profile Updated",
+        description: "Your profile has been updated successfully.",
+      })
+
+      setEditDialogOpen(false)
+    } catch (err) {
+      console.error("Error updating user:", err)
+      const errorMessage = err instanceof Error ? err.message : "Failed to update profile"
+      setError(errorMessage)
+      toast({
+        title: "Update Failed",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setUpdating(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -233,7 +320,8 @@ export default function ProfilePage() {
                   )}
                 </div>
               </div>
-              <Button size="lg" className="magnetic-button">
+              <Button size="lg" className="magnetic-button" onClick={() => handleOpenEditDialog()}>
+                <Edit className="mr-2 h-4 w-4" />
                 Edit Profile
               </Button>
             </div>
@@ -386,6 +474,68 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Edit Profile Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Profile</DialogTitle>
+            <DialogDescription>Update your profile information below.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                value={editUserName}
+                onChange={(e) => setEditUserName(e.target.value)}
+                placeholder="Enter your username"
+                disabled={updating}
+              />
+              <p className="text-xs text-muted-foreground">Must be between 3 and 50 characters</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                placeholder="your.email@sjsu.edu"
+                disabled={updating}
+              />
+              <p className="text-xs text-muted-foreground">Must be a valid @sjsu.edu address</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="contact-email">Contact Email</Label>
+              <Input
+                id="contact-email"
+                type="email"
+                value={editContactEmail}
+                onChange={(e) => setEditContactEmail(e.target.value)}
+                placeholder="contact.email@sjsu.edu"
+                disabled={updating}
+              />
+              <p className="text-xs text-muted-foreground">Must be a valid @sjsu.edu address</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={updating}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateUser} disabled={updating}>
+              {updating ? (
+                <>
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  Updating...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
