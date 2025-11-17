@@ -12,9 +12,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label"
 import { useAuth } from "@/hooks/use-auth"
 import { orchestratorApi } from "@/lib/api/orchestrator"
-import type { User } from "@/lib/api/types"
+import type { User, Listing } from "@/lib/api/types"
 import { useToast } from "@/hooks/use-toast"
-import { Search, ArrowLeft, Edit, Trash2, Mail, Calendar, User as UserIcon, Shield, AlertTriangle } from "lucide-react"
+import { formatPrice } from "@/lib/utils/listings"
+import { Search, ArrowLeft, Edit, Trash2, Mail, Calendar, User as UserIcon, Shield, AlertTriangle, Package } from "lucide-react"
 import Link from "next/link"
 
 export default function AdminUsersPage() {
@@ -35,6 +36,9 @@ export default function AdminUsersPage() {
   const [editContactEmail, setEditContactEmail] = useState("")
   const [updating, setUpdating] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [userListings, setUserListings] = useState<Listing[]>([])
+  const [listingsLoading, setListingsLoading] = useState(false)
+  const [listingsError, setListingsError] = useState<string | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -56,6 +60,46 @@ export default function AdminUsersPage() {
       }
     }
   }, [isHydrated, isAuthenticated, authUser, router])
+
+  const fetchUserListings = useCallback(
+    async (userId: string) => {
+      if (!token || !refreshToken) {
+        return
+      }
+
+      try {
+        setListingsLoading(true)
+        setListingsError(null)
+        const listings = await orchestratorApi.getListingsByUserId(token, refreshToken, userId)
+        setUserListings(listings || [])
+      } catch (err) {
+        console.error("Error fetching user listings:", err)
+        const errorMessage = err instanceof Error ? err.message : "Failed to fetch user listings"
+        setListingsError(errorMessage)
+        toast({
+          title: "Listings Unavailable",
+          description: errorMessage,
+          variant: "destructive",
+        })
+      } finally {
+        setListingsLoading(false)
+      }
+    },
+    [token, refreshToken, toast],
+  )
+
+  const handleViewDialogToggle = useCallback(
+    (open: boolean) => {
+      setViewDialogOpen(open)
+      if (!open) {
+        setSelectedUser(null)
+        setUserListings([])
+        setListingsError(null)
+        setListingsLoading(false)
+      }
+    },
+    [],
+  )
 
   // Search users
   const handleSearch = useCallback(async () => {
@@ -99,7 +143,10 @@ export default function AdminUsersPage() {
       setError(null)
       const user = await orchestratorApi.getUserById(token, refreshToken, userId)
       setSelectedUser(user)
+      setUserListings([])
+      setListingsError(null)
       setViewDialogOpen(true)
+      fetchUserListings(user.user_id)
     } catch (err) {
       console.error("Error fetching user:", err)
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch user"
@@ -432,7 +479,7 @@ export default function AdminUsersPage() {
       </div>
 
       {/* View User Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+      <Dialog open={viewDialogOpen} onOpenChange={handleViewDialogToggle}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>User Details</DialogTitle>
@@ -487,10 +534,62 @@ export default function AdminUsersPage() {
                   </div>
                 )}
               </div>
+              <div className="mt-6 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-4 w-4 text-muted-foreground" />
+                    <h4 className="text-lg font-semibold">Listings</h4>
+                  </div>
+                  {!listingsLoading && !listingsError && (
+                    <Badge variant="secondary">{userListings.length} total</Badge>
+                  )}
+                </div>
+                {listingsLoading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    <span className="text-sm text-muted-foreground">Loading listings...</span>
+                  </div>
+                ) : listingsError ? (
+                  <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2 text-destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span className="text-sm">{listingsError}</span>
+                  </div>
+                ) : userListings.length === 0 ? (
+                  <div className="p-4 rounded-lg border bg-muted/30 text-center text-sm text-muted-foreground">
+                    This user has no listings yet.
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+                    {userListings.map((listing) => (
+                      <Card key={listing.id} className="border bg-muted/30">
+                        <CardContent className="p-4 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-semibold text-sm line-clamp-2">{listing.title}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Posted {formatDate(listing.created_at)}
+                              </p>
+                            </div>
+                            <Badge variant="outline" className="text-xs">
+                              {listing.status}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="font-semibold">{formatPrice(listing.price)}</span>
+                            <Link href={`/listing/${listing.id}`} className="text-primary hover:underline text-xs">
+                              View Listing
+                            </Link>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setViewDialogOpen(false)}>
+            <Button variant="outline" onClick={() => handleViewDialogToggle(false)}>
               Close
             </Button>
             {selectedUser && (

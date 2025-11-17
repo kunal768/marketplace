@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react"
 import { useRouter } from "next/navigation"
 import { Navigation } from "@/components/navigation"
 import { Button } from "@/components/ui/button"
@@ -8,7 +8,6 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Slider } from "@/components/ui/slider"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Search, SlidersHorizontal, Clock, X, AlertCircle } from "lucide-react"
@@ -44,8 +43,10 @@ export default function ListingsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("")
-  const [priceRange, setPriceRange] = useState([0, 1000])
-  const [debouncedPriceRange, setDebouncedPriceRange] = useState([0, 1000])
+  const [minPrice, setMinPrice] = useState<string>("")
+  const [maxPrice, setMaxPrice] = useState<string>("")
+  const [debouncedMinPrice, setDebouncedMinPrice] = useState<string>("")
+  const [debouncedMaxPrice, setDebouncedMaxPrice] = useState<string>("")
   const [statusFilter, setStatusFilter] = useState<DisplayStatus>("Available")
   const [sortBy, setSortBy] = useState("recent")
   const [totalCount, setTotalCount] = useState(0)
@@ -94,14 +95,22 @@ export default function ListingsPage() {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  // Debounce price range changes to avoid too many API calls while dragging
+  // Debounce price changes to avoid too many API calls while typing
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedPriceRange(priceRange)
-    }, 300)
+      setDebouncedMinPrice(minPrice)
+    }, 500)
 
     return () => clearTimeout(timer)
-  }, [priceRange])
+  }, [minPrice])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedMaxPrice(maxPrice)
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [maxPrice])
 
   // Intersection observer for animations
   useEffect(() => {
@@ -162,11 +171,17 @@ export default function ListingsPage() {
       }
 
       // Add price range filter (convert dollars to cents)
-      if (debouncedPriceRange[0] > 0) {
-        filters.min_price = dollarsToCents(debouncedPriceRange[0])
+      if (debouncedMinPrice.trim()) {
+        const minValue = parseFloat(debouncedMinPrice.trim())
+        if (!isNaN(minValue) && minValue > 0) {
+          filters.min_price = dollarsToCents(minValue)
+        }
       }
-      if (debouncedPriceRange[1] < 1000) {
-        filters.max_price = dollarsToCents(debouncedPriceRange[1])
+      if (debouncedMaxPrice.trim()) {
+        const maxValue = parseFloat(debouncedMaxPrice.trim())
+        if (!isNaN(maxValue) && maxValue > 0) {
+          filters.max_price = dollarsToCents(maxValue)
+        }
       }
 
       // Add sort
@@ -177,7 +192,7 @@ export default function ListingsPage() {
 
       return filters
     },
-    [debouncedSearchQuery, selectedCategory, debouncedPriceRange, statusFilter, sortBy],
+    [debouncedSearchQuery, selectedCategory, debouncedMinPrice, debouncedMaxPrice, statusFilter, sortBy],
   )
 
   // Fetch initial listings from API (resets the list)
@@ -405,79 +420,195 @@ export default function ListingsPage() {
     }
   }, [listings.length, loading]) // Only depend on listings.length and loading, not loadMoreListings
 
-  const handleCategoryChange = (category: string) => {
+  const handleCategoryChange = useCallback((category: string) => {
     setSelectedCategory(category === "All" ? "" : category)
-  }
+  }, [])
 
-  const clearFilters = () => {
+
+  const clearFilters = useCallback(() => {
     setSelectedCategory("")
-    setPriceRange([0, 1000])
-    setDebouncedPriceRange([0, 1000])
+    setMinPrice("")
+    setMaxPrice("")
+    setDebouncedMinPrice("")
+    setDebouncedMaxPrice("")
     setStatusFilter("Available")
     setSearchQuery("")
     setSortBy("recent")
-  }
+  }, [])
 
-  const FilterContent = () => (
-    <div className="space-y-6">
-      <div>
-        <Label className="mb-3 block text-base font-semibold">Status</Label>
-        <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as DisplayStatus)}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select status" />
-          </SelectTrigger>
-          <SelectContent>
-            {getDisplayStatuses().map((status) => (
-              <SelectItem key={status} value={status}>
-                {status}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+  // Memoize FilterContent to prevent unnecessary re-renders that cause focus loss
+  const FilterContent = memo(function FilterContent() {
+    // Local state for input values - only syncs to parent on blur or after debounce
+    const [localMinPrice, setLocalMinPrice] = useState(minPrice)
+    const [localMaxPrice, setLocalMaxPrice] = useState(maxPrice)
 
-      <div>
-        <Label className="mb-3 block text-base font-semibold">Category</Label>
-        <Select value={selectedCategory || "All"} onValueChange={handleCategoryChange}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select category" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="All">All Categories</SelectItem>
-            {categories.map((category) => (
-              <SelectItem key={category} value={category}>
-                {category}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+    // Validation function to check if input is a reasonable number
+    const isValidPrice = useCallback((value: string): boolean => {
+      // Allow empty string (no filter)
+      if (value.trim() === "") {
+        return true
+      }
+      
+      // Check if it's a valid number
+      const num = parseFloat(value.trim())
+      if (isNaN(num)) {
+        return false
+      }
+      
+      // Must be non-negative and finite
+      if (num < 0 || !isFinite(num)) {
+        return false
+      }
+      
+      // Reasonable maximum (e.g., $1 million)
+      if (num > 1000000) {
+        return false
+      }
+      
+      return true
+    }, [])
 
-      <div>
-        <Label className="mb-3 block text-base font-semibold">
-          Price Range: ${priceRange[0]} - ${priceRange[1]}
-        </Label>
-        <div className="mt-4 space-y-2">
-          <Slider
-            value={priceRange}
-            onValueChange={setPriceRange}
-            min={0}
-            max={1000}
-            step={10}
-            className="w-full"
-          />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>$0</span>
-            <span>$1000</span>
+    // Sync local state when parent state changes (e.g., from clearFilters)
+    useEffect(() => {
+      setLocalMinPrice(minPrice)
+    }, [minPrice])
+
+    useEffect(() => {
+      setLocalMaxPrice(maxPrice)
+    }, [maxPrice])
+
+    // Debounce local changes to parent state
+    useEffect(() => {
+      const timer = setTimeout(() => {
+        if (localMinPrice !== minPrice) {
+          // Only sync if valid, otherwise clear
+          if (isValidPrice(localMinPrice)) {
+            setMinPrice(localMinPrice)
+          } else {
+            setLocalMinPrice("")
+            setMinPrice("")
+          }
+        }
+      }, 500)
+
+      return () => clearTimeout(timer)
+    }, [localMinPrice, minPrice, isValidPrice]) // Only depend on localMinPrice
+
+    useEffect(() => {
+      const timer = setTimeout(() => {
+        if (localMaxPrice !== maxPrice) {
+          // Only sync if valid, otherwise clear
+          if (isValidPrice(localMaxPrice)) {
+            setMaxPrice(localMaxPrice)
+          } else {
+            setLocalMaxPrice("")
+            setMaxPrice("")
+          }
+        }
+      }, 500)
+
+      return () => clearTimeout(timer)
+    }, [localMaxPrice, maxPrice, isValidPrice]) // Only depend on localMaxPrice
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <Label className="mb-3 block text-base font-semibold">Status</Label>
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as DisplayStatus)}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select status" />
+            </SelectTrigger>
+            <SelectContent>
+              {getDisplayStatuses().map((status) => (
+                <SelectItem key={status} value={status}>
+                  {status}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label className="mb-3 block text-base font-semibold">Category</Label>
+          <Select value={selectedCategory || "All"} onValueChange={handleCategoryChange}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="All">All Categories</SelectItem>
+              {categories.map((category) => (
+                <SelectItem key={category} value={category}>
+                  {category}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label className="mb-3 block text-base font-semibold">Price Range</Label>
+          <div className="mt-4 space-y-3">
+            <div>
+              <Label htmlFor="min-price" className="mb-2 block text-sm text-muted-foreground">
+                Min Price ($)
+              </Label>
+              <Input
+                id="min-price"
+                type="text"
+                inputMode="decimal"
+                placeholder="No minimum"
+                value={localMinPrice}
+                onChange={(e) => setLocalMinPrice(e.target.value)}
+                onBlur={() => {
+                  // Validate and sync on blur
+                  if (isValidPrice(localMinPrice)) {
+                    if (localMinPrice !== minPrice) {
+                      setMinPrice(localMinPrice)
+                    }
+                  } else {
+                    // Clear invalid input
+                    setLocalMinPrice("")
+                    setMinPrice("")
+                  }
+                }}
+                className="w-full"
+              />
+            </div>
+            <div>
+              <Label htmlFor="max-price" className="mb-2 block text-sm text-muted-foreground">
+                Max Price ($)
+              </Label>
+              <Input
+                id="max-price"
+                type="text"
+                inputMode="decimal"
+                placeholder="No maximum"
+                value={localMaxPrice}
+                onChange={(e) => setLocalMaxPrice(e.target.value)}
+                onBlur={() => {
+                  // Validate and sync on blur
+                  if (isValidPrice(localMaxPrice)) {
+                    if (localMaxPrice !== maxPrice) {
+                      setMaxPrice(localMaxPrice)
+                    }
+                  } else {
+                    // Clear invalid input
+                    setLocalMaxPrice("")
+                    setMaxPrice("")
+                  }
+                }}
+                className="w-full"
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      <Button variant="outline" className="w-full bg-transparent magnetic-button" onClick={clearFilters}>
-        Clear All Filters
-      </Button>
-    </div>
-  )
+        <Button variant="outline" className="w-full bg-transparent magnetic-button" onClick={clearFilters}>
+          Clear All Filters
+        </Button>
+      </div>
+    )
+  })
 
   return (
     <div className="min-h-screen bg-background">
@@ -546,8 +677,8 @@ export default function ListingsPage() {
 
           <div className="flex-1">
             {(selectedCategory ||
-              debouncedPriceRange[0] > 0 ||
-              debouncedPriceRange[1] < 1000 ||
+              debouncedMinPrice ||
+              debouncedMaxPrice ||
               debouncedSearchQuery ||
               statusFilter !== "Available") && (
               <div className="mb-6 flex flex-wrap gap-2 animate-float-in-up">
@@ -587,6 +718,34 @@ export default function ListingsPage() {
                     </button>
                   </Badge>
                 )}
+                {debouncedMinPrice && (
+                  <Badge variant="secondary" className="gap-1 px-3 py-1 text-sm">
+                    Min: ${debouncedMinPrice}
+                    <button
+                      onClick={() => {
+                        setMinPrice("")
+                        setDebouncedMinPrice("")
+                      }}
+                      className="ml-1 hover:text-destructive"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {debouncedMaxPrice && (
+                  <Badge variant="secondary" className="gap-1 px-3 py-1 text-sm">
+                    Max: ${debouncedMaxPrice}
+                    <button
+                      onClick={() => {
+                        setMaxPrice("")
+                        setDebouncedMaxPrice("")
+                      }}
+                      className="ml-1 hover:text-destructive"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
               </div>
             )}
 
@@ -612,8 +771,8 @@ export default function ListingsPage() {
                 <CardContent className="py-12 text-center">
                   <p className="text-lg text-muted-foreground">No listings found</p>
                   {(selectedCategory ||
-                    debouncedPriceRange[0] > 0 ||
-                    debouncedPriceRange[1] < 1000 ||
+                    debouncedMinPrice ||
+                    debouncedMaxPrice ||
                     debouncedSearchQuery ||
                     statusFilter !== "Available") && (
                     <Button variant="outline" onClick={clearFilters} className="mt-4">

@@ -459,6 +459,39 @@ export const orchestratorApi = {
     )
   },
 
+  async getListingsByUserId(token: string, refreshToken: string | null, userId: string): Promise<Listing[]> {
+    const validToken = (await getValidToken(refreshToken)) || token
+    const params = new URLSearchParams({ user_id: userId })
+    const url = `${ORCHESTRATOR_URL}/api/listings/by-user-id?${params.toString()}`
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<Listing[]>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+        })
+      },
+    )
+  },
+
   async getAllListings(
     token: string,
     refreshToken: string | null,
