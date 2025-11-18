@@ -620,3 +620,100 @@ func (s *Store) HasUserFlaggedListing(ctx context.Context, listingID int64, user
 	}
 	return true, nil
 }
+
+// GetMediaUrls retrieves all media URLs for a listing
+func (s *Store) GetMediaUrls(ctx context.Context, listingID int64) ([]models.ListingMedia, error) {
+	const q = `SELECT id, listing_id, media_url, created_at FROM listing_media WHERE listing_id = $1 ORDER BY created_at ASC`
+	
+	rows, err := s.P.Query(ctx, q, listingID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query media URLs: %w", err)
+	}
+	defer rows.Close()
+
+	var media []models.ListingMedia
+	for rows.Next() {
+		var m models.ListingMedia
+		if err := rows.Scan(&m.ID, &m.ListingID, &m.MediaURL, &m.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan media URL: %w", err)
+		}
+		media = append(media, m)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating media URLs: %w", err)
+	}
+
+	return media, nil
+}
+
+// UpdateMediaUrl updates a media URL by ID
+func (s *Store) UpdateMediaUrl(ctx context.Context, mediaID int64, listingID int64, userID string, userRole string, newURL string) error {
+	// First verify the listing exists and belongs to the user (or user is admin)
+	var ownerID string
+	err := s.P.QueryRow(ctx, `SELECT user_id::text FROM listings WHERE id=$1`, listingID).Scan(&ownerID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return fmt.Errorf("listing not found")
+		}
+		return fmt.Errorf("failed to verify listing: %w", err)
+	}
+
+	// Check ownership unless admin
+	if userRole != string(httplib.ADMIN) && ownerID != userID {
+		return fmt.Errorf("listing does not belong to user")
+	}
+
+	// Verify the media belongs to this listing
+	var mediaListingID int64
+	err = s.P.QueryRow(ctx, `SELECT listing_id FROM listing_media WHERE id=$1`, mediaID).Scan(&mediaListingID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return fmt.Errorf("media not found")
+		}
+		return fmt.Errorf("failed to verify media: %w", err)
+	}
+
+	if mediaListingID != listingID {
+		return fmt.Errorf("media does not belong to this listing")
+	}
+
+	// Update the media URL
+	_, err = s.P.Exec(ctx, `UPDATE listing_media SET media_url=$1 WHERE id=$2 AND listing_id=$3`, newURL, mediaID, listingID)
+	if err != nil {
+		return fmt.Errorf("failed to update media URL: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteMediaUrl deletes a media URL by URL string
+func (s *Store) DeleteMediaUrl(ctx context.Context, listingID int64, userID string, userRole string, mediaURL string) error {
+	// First verify the listing exists and belongs to the user (or user is admin)
+	var ownerID string
+	err := s.P.QueryRow(ctx, `SELECT user_id::text FROM listings WHERE id=$1`, listingID).Scan(&ownerID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return fmt.Errorf("listing not found")
+		}
+		return fmt.Errorf("failed to verify listing: %w", err)
+	}
+
+	// Check ownership unless admin
+	if userRole != string(httplib.ADMIN) && ownerID != userID {
+		return fmt.Errorf("listing does not belong to user")
+	}
+
+	// Delete the media URL
+	result, err := s.P.Exec(ctx, `DELETE FROM listing_media WHERE listing_id=$1 AND media_url=$2`, listingID, mediaURL)
+	if err != nil {
+		return fmt.Errorf("failed to delete media URL: %w", err)
+	}
+
+	// Check if any rows were deleted
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("media URL not found")
+	}
+
+	return nil
+}

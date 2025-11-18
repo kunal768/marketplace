@@ -140,3 +140,10 @@ export interface UpdateUserResponse {
   user: User
 }
 
+export interface ListingMedia {
+  id: number
+  listing_id: number
+  media_url: string
+  created_at: string
+}
+

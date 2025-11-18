@@ -60,6 +60,18 @@ export function useAuth() {
     // Ensure we have all required fields: userId, token, and user object
     if (token && userId && userStr) {
       try {
+        // Check if token is expired before hydrating
+        if (isTokenExpired(token, 0)) {
+          console.debug('[useAuth] Token expired, clearing credentials')
+          // Clear expired tokens
+          localStorage.removeItem(STORAGE_KEYS.USER)
+          localStorage.removeItem(STORAGE_KEYS.USER_ID)
+          localStorage.removeItem(STORAGE_KEYS.TOKEN)
+          localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN)
+          setIsHydrated(true)
+          return
+        }
+        
         const user = JSON.parse(userStr)
         // Verify userId matches (API returns user_id, not id)
         if (user.user_id !== userId) {

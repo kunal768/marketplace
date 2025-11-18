@@ -41,6 +41,9 @@ type Service interface {
 	HasUserFlaggedListing(ctx context.Context, listingID int64) (bool, error)
 	UpdateFlagListing(ctx context.Context, req UpdateFlagListingRequest) (*UpdateFlagListingResponse, error)
 	DeleteFlagListing(ctx context.Context, req DeleteFlagListingRequest) (*DeleteFlagListingResponse, error)
+	FetchMediaURLs(ctx context.Context, listingID int64) (*FetchMediaURLsResponse, error)
+	UpdateMediaURL(ctx context.Context, req UpdateMediaURLRequest) (*UpdateMediaURLResponse, error)
+	DeleteMediaURL(ctx context.Context, req DeleteMediaURLRequest) (*DeleteMediaURLResponse, error)
 }
 
 func NewListingService(baseUrl string, sharedSecret string) Service {
@@ -818,4 +821,127 @@ func (s *svc) DeleteFlagListing(ctx context.Context, req DeleteFlagListingReques
 		Status:  result.Status,
 		Message: result.Message,
 	}, nil
+}
+
+func (s *svc) FetchMediaURLs(ctx context.Context, listingID int64) (*FetchMediaURLsResponse, error) {
+	fullURL := fmt.Sprintf("%s/listings/%d/media", s.config.URL, listingID)
+
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", fullURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := s.config.Client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var media []ListingMedia
+	if err := json.NewDecoder(resp.Body).Decode(&media); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &FetchMediaURLsResponse{Media: media}, nil
+}
+
+func (s *svc) UpdateMediaURL(ctx context.Context, req UpdateMediaURLRequest) (*UpdateMediaURLResponse, error) {
+	userID, roleID, err := s.extractUserAndRole(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	reqBody := struct {
+		NewURL string `json:"new_url"`
+	}{
+		NewURL: req.NewURL,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	fullURL := fmt.Sprintf("%s/listings/%d/media/%d", s.config.URL, req.ListingID, req.MediaID)
+	httpReq, err := http.NewRequestWithContext(ctx, "PATCH", fullURL, bytes.NewBuffer(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-User-ID", userID)
+	httpReq.Header.Set("X-Role-ID", roleID)
+
+	resp, err := s.config.Client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &UpdateMediaURLResponse{Message: result.Message}, nil
+}
+
+func (s *svc) DeleteMediaURL(ctx context.Context, req DeleteMediaURLRequest) (*DeleteMediaURLResponse, error) {
+	userID, roleID, err := s.extractUserAndRole(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	reqBody := struct {
+		MediaURL string `json:"media_url"`
+	}{
+		MediaURL: req.MediaURL,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	fullURL := fmt.Sprintf("%s/listings/%d/media", s.config.URL, req.ListingID)
+	httpReq, err := http.NewRequestWithContext(ctx, "DELETE", fullURL, bytes.NewBuffer(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-User-ID", userID)
+	httpReq.Header.Set("X-Role-ID", roleID)
+
+	resp, err := s.config.Client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &DeleteMediaURLResponse{Message: result.Message}, nil
 }

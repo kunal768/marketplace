@@ -43,9 +43,10 @@ import {
 import Link from "next/link"
 import { useAuth } from "@/hooks/use-auth"
 import { orchestratorApi } from "@/lib/api/orchestrator"
-import type { Listing, FlagReason } from "@/lib/api/types"
+import type { Listing, FlagReason, ListingMedia } from "@/lib/api/types"
 import { formatPrice, formatTimeAgo, mapCategoryToDisplay } from "@/lib/utils/listings"
 import { useToast } from "@/hooks/use-toast"
+import { getCachedMedia, setCachedMedia, invalidateMediaCache } from "@/lib/utils/media-cache"
 
 export default function ListingDetailPage() {
   const router = useRouter()
@@ -64,6 +65,8 @@ export default function ListingDetailPage() {
   const [hasFlagged, setHasFlagged] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [mediaUrls, setMediaUrls] = useState<ListingMedia[]>([])
+  const [loadingMedia, setLoadingMedia] = useState(false)
   const { toast } = useToast()
 
   const listingId = params?.id ? parseInt(params.id as string, 10) : null
@@ -109,6 +112,41 @@ export default function ListingDetailPage() {
     fetchListing()
   }, [isHydrated, isAuthenticated, token, refreshToken, listingId, router])
 
+  // Fetch media URLs for the listing
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token || !refreshToken || !listingId || isNaN(listingId)) {
+      return
+    }
+
+    const fetchMedia = async () => {
+      // Check cache first
+      const cached = getCachedMedia(listingId)
+      if (cached) {
+        setMediaUrls(cached)
+        return
+      }
+
+      try {
+        setLoadingMedia(true)
+        const media = await orchestratorApi.getListingMedia(token, refreshToken, listingId)
+        if (media && Array.isArray(media)) {
+          setMediaUrls(media)
+          setCachedMedia(listingId, media)
+        } else {
+          setMediaUrls([])
+        }
+      } catch (err) {
+        console.error("Error fetching media URLs:", err)
+        // Don't show error to user, just use placeholder
+        setMediaUrls([])
+      } finally {
+        setLoadingMedia(false)
+      }
+    }
+
+    fetchMedia()
+  }, [isHydrated, isAuthenticated, token, refreshToken, listingId])
+
   // Check if user has already flagged this listing
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !token || !refreshToken || !listingId || isNaN(listingId) || !user) {
@@ -141,8 +179,13 @@ export default function ListingDetailPage() {
     checkIfFlagged()
   }, [isHydrated, isAuthenticated, token, refreshToken, listingId, user])
 
-  // Use placeholder images (media URLs not in response yet)
-  const images = listing ? ["/placeholder.svg"] : []
+  // Use actual media URLs or placeholder
+  const images =
+    mediaUrls.length > 0
+      ? mediaUrls.map((m) => m.media_url)
+      : listing
+        ? ["/placeholder.svg"]
+        : []
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -329,11 +372,21 @@ export default function ListingDetailPage() {
           <div className="lg:col-span-2">
             <Card className="mb-6 overflow-hidden premium-card animate-scale-in-bounce">
               <div className="relative aspect-square bg-muted">
-                <img
-                  src={images[currentImageIndex] || "/placeholder.svg"}
-                  alt={listing.title}
-                  className="h-full w-full object-cover transition-transform duration-700"
-                />
+                {loadingMedia ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+                  </div>
+                ) : (
+                  <img
+                    src={images[currentImageIndex] || "/placeholder.svg"}
+                    alt={listing.title}
+                    className="h-full w-full object-cover transition-transform duration-700"
+                    onError={(e) => {
+                      // Fallback to placeholder if image fails to load
+                      ;(e.target as HTMLImageElement).src = "/placeholder.svg"
+                    }}
+                  />
+                )}
                 {images.length > 1 && (
                   <>
                     <Button

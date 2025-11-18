@@ -46,6 +46,12 @@ export class WebSocketClient {
 
   async connect(userId: string, token: string, refreshToken?: string | null): Promise<void> {
     return new Promise(async (resolve, reject) => {
+      // Validate inputs
+      if (!userId || !token) {
+        reject(new Error('User ID and token are required'))
+        return
+      }
+
       if (this.ws?.readyState === WebSocket.OPEN) {
         resolve()
         return
@@ -75,7 +81,8 @@ export class WebSocketClient {
       // Only check expiry if token is close to expiring (within 5 minutes) or already expired
       // This is a fast operation (JWT decode) so it's fine to do on every connection attempt
       if (isTokenExpired(token, 300)) {
-        if (refreshToken) {
+        // Only attempt refresh if refreshToken exists and is not null/empty
+        if (refreshToken && refreshToken.trim() !== '') {
           try {
             console.log('[WebSocket] Token expired or expiring soon (within 5 min), refreshing before connection...')
             const newToken = await refreshAccessToken(refreshToken, this.onTokenUpdate)
@@ -84,15 +91,23 @@ export class WebSocketClient {
               // Refresh token is updated in callback
               console.log('[WebSocket] Token refreshed successfully')
             } else {
+              // Refresh failed silently - token may be expired
               reject(new Error('Failed to refresh expired token'))
               return
             }
           } catch (error) {
-            console.error('[WebSocket] Token refresh failed:', error)
+            // Handle expired refresh token gracefully - don't log as error
+            const errorMessage = error instanceof Error ? error.message : 'Token refresh failed'
+            if (errorMessage.includes('expired') || errorMessage.includes('401')) {
+              console.debug('[WebSocket] Refresh token expired, connection rejected')
+            } else {
+              console.error('[WebSocket] Token refresh failed:', error)
+            }
             reject(new Error('Token refresh failed'))
             return
           }
         } else {
+          // No refresh token available - silently reject
           reject(new Error('Token expired and no refresh token available'))
           return
         }
@@ -185,7 +200,7 @@ export class WebSocketClient {
                 console.error('[WebSocket] Auth failed:', errorMsg)
                 
                 // If 401 and we have refresh token, try refreshing and retry once
-                if (errorMsg.includes('401') && this.refreshToken && this.authPending) {
+                if (errorMsg.includes('401') && this.refreshToken && this.refreshToken.trim() !== '' && this.authPending) {
                   console.log('[WebSocket] 401 error, attempting token refresh and retry...')
                   try {
                     const newToken = await refreshAccessToken(this.refreshToken, this.onTokenUpdate)
@@ -200,9 +215,18 @@ export class WebSocketClient {
                       this.send(retryAuthMessage)
                       console.log('[WebSocket] Retried auth with refreshed token')
                       return // Don't reject yet, wait for auth_ack
+                    } else {
+                      // Refresh token expired - handle gracefully
+                      console.debug('[WebSocket] Refresh token expired during retry')
+                      this.authPending = false
                     }
                   } catch (refreshError) {
-                    console.error('[WebSocket] Token refresh failed during retry:', refreshError)
+                    const refreshErrorMsg = refreshError instanceof Error ? refreshError.message : 'Token refresh failed'
+                    if (refreshErrorMsg.toLowerCase().includes('expired') || refreshErrorMsg.includes('401')) {
+                      console.debug('[WebSocket] Refresh token expired during retry')
+                    } else {
+                      console.error('[WebSocket] Token refresh failed during retry:', refreshError)
+                    }
                     this.authPending = false
                   }
                 }

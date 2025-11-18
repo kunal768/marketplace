@@ -10,11 +10,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { Search, SlidersHorizontal, Clock, X, AlertCircle } from "lucide-react"
-import Link from "next/link"
+import { Search, SlidersHorizontal, X, AlertCircle } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { orchestratorApi } from "@/lib/api/orchestrator"
 import type { Listing } from "@/lib/api/types"
+import { ListingCard } from "@/components/listing-card"
 import {
   formatPrice,
   formatTimeAgo,
@@ -791,40 +791,13 @@ export default function ListingsPage() {
 
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
                   {listings.map((listing, index) => (
-                    <Link key={listing.id} href={`/listing/${listing.id}`}>
-                      <Card
-                        className={`overflow-hidden premium-card cursor-pointer h-full scroll-reveal stagger-${(index % 3) + 1}`}
-                      >
-                        <CardHeader className="p-0">
-                          <div className="relative aspect-square overflow-hidden bg-muted">
-                            <img
-                              src="/placeholder.svg"
-                              alt={listing.title}
-                              className="h-full w-full object-cover transition-transform duration-500 hover:scale-110"
-                            />
-                            <Badge className="absolute right-3 top-3 bg-background/90 text-foreground backdrop-blur-sm">
-                              {mapCategoryToDisplay(listing.category)}
-                            </Badge>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="p-5">
-                          <h3 className="mb-3 font-semibold text-lg text-foreground line-clamp-2">{listing.title}</h3>
-                          <div className="mb-2 flex items-center justify-between">
-                            <span className="text-3xl font-bold text-primary">{formatPrice(listing.price)}</span>
-                            <Badge variant="secondary" className="text-sm">
-                              {listing.status}
-                            </Badge>
-                          </div>
-                        </CardContent>
-                        <CardFooter className="flex items-center justify-between border-t border-border p-5 text-sm text-muted-foreground">
-                          <span className="font-medium text-xs truncate max-w-[120px]">{listing.user_id}</span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-4 w-4" />
-                            {formatTimeAgo(listing.created_at)}
-                          </span>
-                        </CardFooter>
-                      </Card>
-                    </Link>
+                    <ListingCard
+                      key={listing.id}
+                      listing={listing}
+                      token={token!}
+                      refreshToken={refreshToken}
+                      index={index}
+                    />
                   ))}
                 </div>
 

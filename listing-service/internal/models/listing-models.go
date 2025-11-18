@@ -139,3 +139,16 @@ type FlaggedListing struct {
 	// Listing information
 	Listing Listing `json:"listing"`
 }
+
+// ListingMedia represents a media URL associated with a listing
+type ListingMedia struct {
+	ID        int64     `json:"id"`
+	ListingID int64     `json:"listing_id"`
+	MediaURL  string    `json:"media_url"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// UpdateMediaParams represents parameters for updating a media URL
+type UpdateMediaParams struct {
+	NewURL string `json:"new_url"`
+}

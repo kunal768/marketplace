@@ -238,3 +238,44 @@ type DeleteFlagListingResponse struct {
 	Status  string `json:"status"`
 	Message string `json:"message"`
 }
+
+// ListingMedia represents a media URL associated with a listing
+type ListingMedia struct {
+	ID        int64     `json:"id"`
+	ListingID int64     `json:"listing_id"`
+	MediaURL  string    `json:"media_url"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// FetchMediaURLsRequest for getting media URLs for a listing
+type FetchMediaURLsRequest struct {
+	ListingID int64 `json:"listing_id"`
+}
+
+// FetchMediaURLsResponse returns media URLs for a listing
+type FetchMediaURLsResponse struct {
+	Media []ListingMedia `json:"media"`
+}
+
+// UpdateMediaURLRequest for updating a media URL
+type UpdateMediaURLRequest struct {
+	ListingID int64  `json:"listing_id"`
+	MediaID   int64  `json:"media_id"`
+	NewURL    string `json:"new_url"`
+}
+
+// UpdateMediaURLResponse returns success message
+type UpdateMediaURLResponse struct {
+	Message string `json:"message"`
+}
+
+// DeleteMediaURLRequest for deleting a media URL
+type DeleteMediaURLRequest struct {
+	ListingID int64  `json:"listing_id"`
+	MediaURL  string `json:"media_url"`
+}
+
+// DeleteMediaURLResponse returns success message
+type DeleteMediaURLResponse struct {
+	Message string `json:"message"`
+}

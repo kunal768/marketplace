@@ -20,6 +20,7 @@ import type {
   DeleteFlagListingResponse,
   UpdateUserRequest,
   UpdateUserResponse,
+  ListingMedia,
 } from "./types"
 import { isTokenExpired } from "@/lib/utils/jwt"
 
@@ -60,6 +61,21 @@ async function refreshAccessToken(
           error: "Unknown error",
           message: `HTTP ${response.status}: ${response.statusText}`,
         }))
+        
+        // Handle expired refresh token gracefully - return null instead of throwing
+        if (response.status === 401 || error.message?.toLowerCase().includes('expired')) {
+          console.debug('[API] Refresh token expired')
+          // Clear expired tokens from localStorage
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('frontend-loginToken')
+            localStorage.removeItem('frontend-refreshToken')
+          }
+          // Resolve with null instead of throwing - let callers handle gracefully
+          refreshCallbacks.forEach((cb) => cb.resolve(null))
+          refreshCallbacks = []
+          return null
+        }
+        
         throw new Error(error.message || error.error || "Token refresh failed")
       }
 
@@ -77,7 +93,22 @@ async function refreshAccessToken(
 
       return token
     } catch (error) {
-      // Reject all queued requests
+      // Handle expired refresh token errors gracefully
+      const errorMessage = error instanceof Error ? error.message : "Token refresh failed"
+      if (errorMessage.toLowerCase().includes('expired') || errorMessage.includes('401')) {
+        console.debug('[API] Refresh token expired during refresh attempt')
+        // Clear expired tokens from localStorage
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('frontend-loginToken')
+          localStorage.removeItem('frontend-refreshToken')
+        }
+        // Resolve with null instead of rejecting - let callers handle gracefully
+        refreshCallbacks.forEach((cb) => cb.resolve(null))
+        refreshCallbacks = []
+        return null
+      }
+      
+      // Reject all queued requests for other errors
       const err = error instanceof Error ? error : new Error("Token refresh failed")
       refreshCallbacks.forEach((cb) => cb.reject(err))
       refreshCallbacks = []
@@ -726,7 +757,7 @@ export const orchestratorApi = {
     const validToken = (await getValidToken(refreshToken)) || token
 
     const makeRequest = () =>
-      fetch(`${ORCHESTRATOR_URL}/api/listings/user-lists/`, {
+      fetch(`${ORCHESTRATOR_URL}/api/listings/user-lists`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${validToken}`,
@@ -742,7 +773,7 @@ export const orchestratorApi = {
       tokenUpdateCallback || undefined,
       async () => {
         const newToken = await getValidToken(refreshToken)
-        return fetch(`${ORCHESTRATOR_URL}/api/listings/user-lists/`, {
+        return fetch(`${ORCHESTRATOR_URL}/api/listings/user-lists`, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${newToken || validToken}`,
@@ -1138,6 +1169,156 @@ export const orchestratorApi = {
         const newToken = await getValidToken(refreshToken)
         return fetch(url, {
           method: "POST",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        })
+      },
+    )
+  },
+
+  /**
+   * Get media URLs for a listing
+   * @param token - Access token
+   * @param refreshToken - Refresh token
+   * @param listingId - Listing ID
+   * @returns Array of media URLs
+   */
+  async getListingMedia(
+    token: string,
+    refreshToken: string | null,
+    listingId: number,
+  ): Promise<ListingMedia[]> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/media/${listingId}`
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<ListingMedia[]>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+        })
+      },
+    )
+  },
+
+  /**
+   * Update a media URL for a listing
+   * @param token - Access token
+   * @param refreshToken - Refresh token
+   * @param listingId - Listing ID
+   * @param mediaId - Media ID
+   * @param newUrl - New media URL
+   * @returns Success response
+   */
+  async updateListingMedia(
+    token: string,
+    refreshToken: string | null,
+    listingId: number,
+    mediaId: number,
+    newUrl: string,
+  ): Promise<{ message: string }> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/media/${listingId}/${mediaId}`
+
+    const body = {
+      new_url: newUrl,
+    }
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<{ message: string }>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        })
+      },
+    )
+  },
+
+  /**
+   * Delete a media URL for a listing
+   * @param token - Access token
+   * @param refreshToken - Refresh token
+   * @param listingId - Listing ID
+   * @param mediaUrl - Media URL to delete
+   * @returns Success response
+   */
+  async deleteListingMedia(
+    token: string,
+    refreshToken: string | null,
+    listingId: number,
+    mediaUrl: string,
+  ): Promise<{ message: string }> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/media/${listingId}`
+
+    const body = {
+      media_url: mediaUrl,
+    }
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<{ message: string }>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "DELETE",
           headers: {
             Authorization: `Bearer ${newToken || validToken}`,
             "Content-Type": "application/json",

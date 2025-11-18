@@ -33,6 +33,7 @@ func Routes(h *Handlers, orchReqId string) *chi.Mux {
 		r.Post("/chatsearch", h.ChatSearchHandler)
 		r.Get("/", h.ListHandler)
 		r.Get("/{id}", h.GetHandler)
+		r.Get("/{id}/media", h.GetMediaUrlsHandler) // Public endpoint for fetching media
 	})
 
 	r.Group(func(r chi.Router) {
@@ -50,6 +51,8 @@ func Routes(h *Handlers, orchReqId string) *chi.Mux {
 		r.Patch("/update/{id}", h.UpdateHandler)
 		r.Delete("/delete/{id}", h.DeleteHandler)
 		r.Post("/add-media-url/{id}", h.AddMediaURLHandler)
+		r.Patch("/{id}/media/{media_id}", h.UpdateMediaUrlHandler)
+		r.Delete("/{id}/media", h.DeleteMediaUrlHandler)
 	})
 
 	return r

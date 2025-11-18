@@ -592,3 +592,153 @@ func (h *Handlers) HasUserFlaggedListingHandler(w http.ResponseWriter, r *http.R
 
 	platform.JSON(w, http.StatusOK, map[string]bool{"has_flagged": hasFlagged})
 }
+
+// GetMediaUrlsHandler handles getting all media URLs for a listing
+func (h *Handlers) GetMediaUrlsHandler(w http.ResponseWriter, r *http.Request) {
+	// Parse listing ID from URL parameter
+	listingIDStr := chi.URLParam(r, "id")
+	if listingIDStr == "" {
+		platform.Error(w, http.StatusBadRequest, "listing ID is required")
+		return
+	}
+
+	listingID, err := strconv.ParseInt(listingIDStr, 10, 64)
+	if err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid listing ID")
+		return
+	}
+
+	// Fetch media URLs from repository
+	media, err := h.S.GetMediaUrls(r.Context(), listingID)
+	if err != nil {
+		log.Printf("Error fetching media URLs: %v", err)
+		platform.Error(w, http.StatusInternalServerError, "failed to fetch media URLs")
+		return
+	}
+
+	// Return empty array if no media found (not an error)
+	platform.JSON(w, http.StatusOK, media)
+}
+
+// UpdateMediaUrlHandler handles updating a media URL by ID
+func (h *Handlers) UpdateMediaUrlHandler(w http.ResponseWriter, r *http.Request) {
+	// User Auth - get both userID and role
+	userID, userRole, err := common.ValidateUserAndRoleAuthWithRole(w, r)
+	if err != nil {
+		return
+	}
+
+	// Parse listing ID from URL parameter
+	listingIDStr := chi.URLParam(r, "id")
+	if listingIDStr == "" {
+		platform.Error(w, http.StatusBadRequest, "listing ID is required")
+		return
+	}
+
+	listingID, err := strconv.ParseInt(listingIDStr, 10, 64)
+	if err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid listing ID")
+		return
+	}
+
+	// Parse media ID from URL parameter
+	mediaIDStr := chi.URLParam(r, "media_id")
+	if mediaIDStr == "" {
+		platform.Error(w, http.StatusBadRequest, "media ID is required")
+		return
+	}
+
+	mediaID, err := strconv.ParseInt(mediaIDStr, 10, 64)
+	if err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid media ID")
+		return
+	}
+
+	// Decode JSON body
+	var p models.UpdateMediaParams
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	if p.NewURL == "" {
+		platform.Error(w, http.StatusBadRequest, "new_url is required")
+		return
+	}
+
+	// Call repository method to update media URL
+	err = h.S.UpdateMediaUrl(r.Context(), mediaID, listingID, userID, userRole, p.NewURL)
+	if err != nil {
+		// Check error type to return appropriate status code
+		if err.Error() == "listing not found" || err.Error() == "media not found" {
+			platform.Error(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if err.Error() == "listing does not belong to user" || err.Error() == "media does not belong to this listing" {
+			platform.Error(w, http.StatusForbidden, err.Error())
+			return
+		}
+		platform.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	platform.JSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Media URL updated successfully",
+	})
+}
+
+// DeleteMediaUrlHandler handles deleting a media URL by URL string
+func (h *Handlers) DeleteMediaUrlHandler(w http.ResponseWriter, r *http.Request) {
+	// User Auth - get both userID and role
+	userID, userRole, err := common.ValidateUserAndRoleAuthWithRole(w, r)
+	if err != nil {
+		return
+	}
+
+	// Parse listing ID from URL parameter
+	listingIDStr := chi.URLParam(r, "id")
+	if listingIDStr == "" {
+		platform.Error(w, http.StatusBadRequest, "listing ID is required")
+		return
+	}
+
+	listingID, err := strconv.ParseInt(listingIDStr, 10, 64)
+	if err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid listing ID")
+		return
+	}
+
+	// Decode JSON body to get media URL
+	var req struct {
+		MediaURL string `json:"media_url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	if req.MediaURL == "" {
+		platform.Error(w, http.StatusBadRequest, "media_url is required")
+		return
+	}
+
+	// Call repository method to delete media URL
+	err = h.S.DeleteMediaUrl(r.Context(), listingID, userID, userRole, req.MediaURL)
+	if err != nil {
+		// Check error type to return appropriate status code
+		if err.Error() == "listing not found" || err.Error() == "media URL not found" {
+			platform.Error(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if err.Error() == "listing does not belong to user" {
+			platform.Error(w, http.StatusForbidden, err.Error())
+			return
+		}
+		platform.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	platform.JSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Media URL deleted successfully",
+	})
+}

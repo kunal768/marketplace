@@ -3,6 +3,7 @@ import { WebSocketClient } from '@/lib/websocket/client'
 import type { ConnectionState, Message, NotificationMessage } from '@/lib/websocket/types'
 import { setTokenUpdateCallback } from '@/lib/api/orchestrator'
 import { setGlobalWebSocketDisconnect, clearGlobalWebSocketDisconnect } from '@/lib/websocket/manager'
+import { isTokenExpired } from '@/lib/utils/jwt'
 
 const EVENTS_SERVER_URL = process.env.NEXT_PUBLIC_EVENTS_SERVER_URL || 'ws://localhost:8001/ws'
 
@@ -47,8 +48,9 @@ export function useWebSocketConnection(
     tokenUpdateCallbackRef.current = callback
   }, [])
 
-  // Simple check: do we have credentials?
-  const hasCredentials = !!userId && !!token
+  // Check if we have valid credentials (not just present, but also not expired)
+  // Only consider credentials valid if token exists and is not expired
+  const hasCredentials = !!userId && !!token && !isTokenExpired(token, 300)
 
   // Debug logging - only log when credentials actually change or connection state changes significantly
   // This prevents excessive logging on every render
@@ -77,15 +79,24 @@ export function useWebSocketConnection(
   // Create client when credentials are available
   useEffect(() => {
     if (!hasCredentials) {
-      // No credentials - clean up only if client exists
+      // No credentials or expired token - clean up only if client exists
       if (clientRef.current) {
-        console.log('[useWebSocketConnection] Cleaning up - no credentials')
+        console.log('[useWebSocketConnection] Cleaning up - no valid credentials')
         clientRef.current.disconnect()
         clientRef.current = null
       }
       autoConnectAttemptedRef.current = false
       setConnectionState('disconnected')
       setConnectionError(null)
+      
+      // Clear expired tokens from localStorage if they exist but are expired
+      if (token && isTokenExpired(token, 0)) {
+        console.debug('[useWebSocketConnection] Clearing expired tokens from localStorage')
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('frontend-loginToken')
+          localStorage.removeItem('frontend-refreshToken')
+        }
+      }
       return
     }
 

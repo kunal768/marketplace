@@ -10,10 +10,11 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Edit, Tag, Package, AlertCircle, Loader2 } from "lucide-react"
+import { Edit, Tag, Package, AlertCircle, Loader2, Trash2, Image as ImageIcon, Plus } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { orchestratorApi } from "@/lib/api/orchestrator"
-import type { Listing } from "@/lib/api/types"
+import type { Listing, ListingMedia } from "@/lib/api/types"
+import { getCachedMedia, setCachedMedia, invalidateMediaCache } from "@/lib/utils/media-cache"
 import {
   getDisplayCategories,
   mapCategoryToDisplay,
@@ -38,6 +39,9 @@ export default function EditListingPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [listing, setListing] = useState<Listing | null>(null)
+  const [mediaUrls, setMediaUrls] = useState<ListingMedia[]>([])
+  const [loadingMedia, setLoadingMedia] = useState(false)
+  const [deletingMediaId, setDeletingMediaId] = useState<number | null>(null)
   const { toast } = useToast()
 
   const listingId = params?.id ? parseInt(params.id as string, 10) : null
@@ -102,6 +106,40 @@ export default function EditListingPage() {
 
     fetchListing()
   }, [isHydrated, isAuthenticated, token, refreshToken, listingId, user])
+
+  // Fetch media URLs for the listing
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token || !refreshToken || !listingId || isNaN(listingId)) {
+      return
+    }
+
+    const fetchMedia = async () => {
+      // Check cache first
+      const cached = getCachedMedia(listingId)
+      if (cached) {
+        setMediaUrls(cached)
+        return
+      }
+
+      try {
+        setLoadingMedia(true)
+        const media = await orchestratorApi.getListingMedia(token, refreshToken, listingId)
+        if (media && Array.isArray(media)) {
+          setMediaUrls(media)
+          setCachedMedia(listingId, media)
+        } else {
+          setMediaUrls([])
+        }
+      } catch (err) {
+        console.error("Error fetching media URLs:", err)
+        setMediaUrls([])
+      } finally {
+        setLoadingMedia(false)
+      }
+    }
+
+    fetchMedia()
+  }, [isHydrated, isAuthenticated, token, refreshToken, listingId])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -209,6 +247,54 @@ export default function EditListingPage() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleDeleteMedia = async (mediaUrl: string) => {
+    if (!token || !refreshToken || !listingId) {
+      toast({
+        title: "Error",
+        description: "Authentication required",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const mediaToDelete = mediaUrls.find((m) => m.media_url === mediaUrl)
+      if (mediaToDelete) {
+        setDeletingMediaId(mediaToDelete.id)
+      }
+
+      await orchestratorApi.deleteListingMedia(token, refreshToken, listingId, mediaUrl)
+      toast({
+        title: "Success",
+        description: "Media deleted successfully",
+      })
+
+      // Update local state and cache
+      const updatedMedia = mediaUrls.filter((m) => m.media_url !== mediaUrl)
+      setMediaUrls(updatedMedia)
+      setCachedMedia(listingId, updatedMedia)
+    } catch (err) {
+      console.error("Error deleting media:", err)
+      const errorMessage = err instanceof Error ? err.message : "Failed to delete media"
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingMediaId(null)
+    }
+  }
+
+  const handleAddMedia = () => {
+    // Navigate to create page with listing ID, or show upload dialog
+    // For now, just show a message
+    toast({
+      title: "Add Media",
+      description: "Use the upload feature when creating a listing, or add media URLs manually.",
+    })
   }
 
   // Show loading state
@@ -386,7 +472,77 @@ export default function EditListingPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5 animate-scale-in-bounce stagger-3">
+              <Card className="premium-card animate-scale-in-bounce stagger-3">
+                <CardHeader>
+                  <CardTitle className="text-xl flex items-center gap-2">
+                    <ImageIcon className="h-6 w-6" />
+                    Media Management
+                  </CardTitle>
+                  <CardDescription className="text-base">Manage images and media for your listing</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {loadingMedia ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                  ) : mediaUrls.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <ImageIcon className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No media uploaded yet</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="mt-4"
+                        onClick={handleAddMedia}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Media
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                      {mediaUrls.map((media) => (
+                        <div key={media.id} className="relative group">
+                          <div className="aspect-square overflow-hidden rounded-lg border-2 border-border bg-muted">
+                            <img
+                              src={media.media_url}
+                              alt={`Media ${media.id}`}
+                              className="h-full w-full object-cover"
+                              onError={(e) => {
+                                ;(e.target as HTMLImageElement).src = "/placeholder.svg"
+                              }}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="icon"
+                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => handleDeleteMedia(media.media_url)}
+                            disabled={deletingMediaId === media.id}
+                          >
+                            {deletingMediaId === media.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="aspect-square border-dashed"
+                        onClick={handleAddMedia}
+                      >
+                        <Plus className="h-8 w-8" />
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5 animate-scale-in-bounce stagger-4">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-lg">
                     <Tag className="h-6 w-6 text-primary" />
@@ -426,7 +582,7 @@ export default function EditListingPage() {
                 </Card>
               )}
 
-              <div className="flex gap-4 animate-float-in-up stagger-4">
+              <div className="flex gap-4 animate-float-in-up stagger-5">
                 <Button
                   type="submit"
                   size="lg"

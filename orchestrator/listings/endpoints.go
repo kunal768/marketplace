@@ -583,6 +583,179 @@ func (e *Endpoints) HasUserFlaggedListingHandler(w http.ResponseWriter, r *http.
 	httplib.WriteJSON(w, http.StatusOK, map[string]bool{"has_flagged": hasFlagged})
 }
 
+// GetMediaURLsHandler handles getting media URLs for a listing
+func (e *Endpoints) GetMediaURLsHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract ID from URL path using PathValue (Go 1.22+)
+	listingIDStr := r.PathValue("id")
+	if listingIDStr == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Listing ID is required",
+		})
+		return
+	}
+
+	listingID, err := strconv.ParseInt(listingIDStr, 10, 64)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Invalid listing ID format",
+		})
+		return
+	}
+
+	// Call service
+	response, err := e.service.FetchMediaURLs(r.Context(), listingID)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to fetch media URLs",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, response.Media)
+}
+
+// UpdateMediaURLHandler handles updating a media URL
+func (e *Endpoints) UpdateMediaURLHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract IDs from URL path
+	listingIDStr := r.PathValue("id")
+	if listingIDStr == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Listing ID is required",
+		})
+		return
+	}
+
+	listingID, err := strconv.ParseInt(listingIDStr, 10, 64)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Invalid listing ID format",
+		})
+		return
+	}
+
+	mediaIDStr := r.PathValue("media_id")
+	if mediaIDStr == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Media ID is required",
+		})
+		return
+	}
+
+	mediaID, err := strconv.ParseInt(mediaIDStr, 10, 64)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Invalid media ID format",
+		})
+		return
+	}
+
+	var updateReq struct {
+		NewURL string `json:"new_url"`
+	}
+
+	// Decode request body
+	if err := json.NewDecoder(r.Body).Decode(&updateReq); err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request body",
+			Message: "Failed to decode request body",
+		})
+		return
+	}
+
+	if updateReq.NewURL == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Validation error",
+			Message: "new_url is required",
+		})
+		return
+	}
+
+	req := UpdateMediaURLRequest{
+		ListingID: listingID,
+		MediaID:   mediaID,
+		NewURL:    updateReq.NewURL,
+	}
+
+	// Call service
+	response, err := e.service.UpdateMediaURL(r.Context(), req)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to update media URL",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, response)
+}
+
+// DeleteMediaURLHandler handles deleting a media URL
+func (e *Endpoints) DeleteMediaURLHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract ID from URL path
+	listingIDStr := r.PathValue("id")
+	if listingIDStr == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Listing ID is required",
+		})
+		return
+	}
+
+	listingID, err := strconv.ParseInt(listingIDStr, 10, 64)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Invalid listing ID format",
+		})
+		return
+	}
+
+	var deleteReq struct {
+		MediaURL string `json:"media_url"`
+	}
+
+	// Decode request body
+	if err := json.NewDecoder(r.Body).Decode(&deleteReq); err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request body",
+			Message: "Failed to decode request body",
+		})
+		return
+	}
+
+	if deleteReq.MediaURL == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Validation error",
+			Message: "media_url is required",
+		})
+		return
+	}
+
+	req := DeleteMediaURLRequest{
+		ListingID: listingID,
+		MediaURL:  deleteReq.MediaURL,
+	}
+
+	// Call service
+	response, err := e.service.DeleteMediaURL(r.Context(), req)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to delete media URL",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, response)
+}
+
 func (e *Endpoints) UpdateFlagListingHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract ID from URL path using PathValue (Go 1.22+)
 	flagIDStr := r.PathValue("flag_id")
@@ -737,21 +910,28 @@ func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 	}
 
 	// Protected routes (require auth + role injection)
+	// Specific routes must come before parameterized routes to avoid conflicts
+	// Routes with specific path segments (like /delete/, /update/, /flag/, etc.) must come first
 	mux.Handle("GET /api/listings/", protected(http.HandlerFunc(e.GetAllListingsHandler)))
-	mux.Handle("GET /api/listings/{id}", protected(http.HandlerFunc(e.GetListingByIDHandler)))
 	mux.Handle("POST /api/listings/chatsearch", protected(http.HandlerFunc(e.ChatSearchHandler)))
 	mux.Handle("POST /api/listings/create", protected(http.HandlerFunc(e.CreateListingHandler)))
-	mux.Handle("PATCH /api/listings/update/{id}", protected(http.HandlerFunc(e.UpdateListingHandler)))
-	mux.Handle("DELETE /api/listings/delete/{id}", httplib.AuthMiddleWare(
-		httplib.RoleInjectionMiddleWare(dbPool)(http.HandlerFunc(e.DeleteListingHandler)),
-	))
-	mux.Handle("GET /api/listings/user-lists/", protected(http.HandlerFunc(e.GetUserListingsHandler)))
+	mux.Handle("GET /api/listings/user-lists", protected(http.HandlerFunc(e.GetUserListingsHandler)))
 	mux.Handle("POST /api/listings/upload", httplib.AuthMiddleWare(
 		httplib.RoleInjectionMiddleWare(dbPool)(http.HandlerFunc(e.UploadMediaHandler)),
 	))
 	mux.Handle("POST /api/listings/add-media-url/{id}", protected(http.HandlerFunc(e.AddMediaURLHandler)))
 	mux.Handle("GET /api/listings/flag/{id}/check", protected(http.HandlerFunc(e.HasUserFlaggedListingHandler)))
 	mux.Handle("POST /api/listings/flag/{id}", protected(http.HandlerFunc(e.FlagListingHandler)))
+	mux.Handle("PATCH /api/listings/update/{id}", protected(http.HandlerFunc(e.UpdateListingHandler)))
+	mux.Handle("DELETE /api/listings/delete/{id}", httplib.AuthMiddleWare(
+		httplib.RoleInjectionMiddleWare(dbPool)(http.HandlerFunc(e.DeleteListingHandler)),
+	))
+	// Parameterized routes - must come after all specific routes with path segments
+	mux.Handle("GET /api/listings/{id}", protected(http.HandlerFunc(e.GetListingByIDHandler)))
+	// Media routes use /media/{id} pattern to avoid conflicts with /delete/{id}, /update/{id}, etc.
+	mux.Handle("GET /api/listings/media/{id}", protected(http.HandlerFunc(e.GetMediaURLsHandler)))
+	mux.Handle("PATCH /api/listings/media/{id}/{media_id}", protected(http.HandlerFunc(e.UpdateMediaURLHandler)))
+	mux.Handle("DELETE /api/listings/media/{id}", protected(http.HandlerFunc(e.DeleteMediaURLHandler)))
 
 	// Admin-only routes
 	mux.Handle("GET /api/listings/flagged", adminProtected(http.HandlerFunc(e.GetFlaggedListingsHandler)))
