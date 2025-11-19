@@ -92,7 +92,7 @@ func (s *Store) GetListingsByUserID(ctx context.Context, targetUserID string) ([
 	return out, rows.Err()
 }
 
-func (s *Store) List(ctx context.Context, f *models.ListFilters) ([]models.Listing, error) {
+func (s *Store) List(ctx context.Context, f *models.ListFilters) ([]models.Listing, int, error) {
 	hasKeywords := len(f.Keywords) > 0
 
 	// First, prepare all keyword parameters for reuse
@@ -104,31 +104,7 @@ func (s *Store) List(ctx context.Context, f *models.ListFilters) ([]models.Listi
 		}
 	}
 
-	// Build SELECT clause with keyword score if keywords are present
-	sb := strings.Builder{}
-	var selectFields []string
-	selectFields = append(selectFields, "id", "title", "description", "price", "category", "user_id", "status", "created_at")
-
-	var scoreParts []string
-	paramNum := 1
-
-	if hasKeywords {
-		// Build score calculation: title matches weighted 2x, description matches weighted 1x
-		for i := 0; i < len(f.Keywords); i++ {
-			// Title match (weighted 2x) - uses paramNum
-			scoreParts = append(scoreParts, fmt.Sprintf("CASE WHEN title ILIKE $%d THEN 2 ELSE 0 END", paramNum))
-			paramNum++
-			// Description match (weighted 1x) - uses paramNum
-			scoreParts = append(scoreParts, fmt.Sprintf("CASE WHEN description ILIKE $%d THEN 1 ELSE 0 END", paramNum))
-			paramNum++
-		}
-		scoreExpr := "(" + strings.Join(scoreParts, " + ") + ") AS keyword_score"
-		selectFields = append(selectFields, scoreExpr)
-	}
-
-	sb.WriteString("SELECT " + strings.Join(selectFields, ", ") + " FROM listings")
-
-	// Build WHERE clause
+	// Build WHERE clause (shared between COUNT and SELECT queries)
 	var where []string
 	var args []any
 
@@ -169,9 +145,44 @@ func (s *Store) List(ctx context.Context, f *models.ListFilters) ([]models.Listi
 		currentParamNum++
 	}
 
+	// Build WHERE clause string
+	whereClause := ""
 	if len(where) > 0 {
-		sb.WriteString(" WHERE " + strings.Join(where, " AND "))
+		whereClause = " WHERE " + strings.Join(where, " AND ")
 	}
+
+	// First, execute COUNT query to get total number of matching listings
+	countQuery := "SELECT COUNT(*) FROM listings" + whereClause
+	var totalCount int
+	err := s.P.QueryRow(ctx, countQuery, args...).Scan(&totalCount)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Build SELECT clause with keyword score if keywords are present
+	sb := strings.Builder{}
+	var selectFields []string
+	selectFields = append(selectFields, "id", "title", "description", "price", "category", "user_id", "status", "created_at")
+
+	var scoreParts []string
+	paramNum := 1
+
+	if hasKeywords {
+		// Build score calculation: title matches weighted 2x, description matches weighted 1x
+		for i := 0; i < len(f.Keywords); i++ {
+			// Title match (weighted 2x) - uses paramNum
+			scoreParts = append(scoreParts, fmt.Sprintf("CASE WHEN title ILIKE $%d THEN 2 ELSE 0 END", paramNum))
+			paramNum++
+			// Description match (weighted 1x) - uses paramNum
+			scoreParts = append(scoreParts, fmt.Sprintf("CASE WHEN description ILIKE $%d THEN 1 ELSE 0 END", paramNum))
+			paramNum++
+		}
+		scoreExpr := "(" + strings.Join(scoreParts, " + ") + ") AS keyword_score"
+		selectFields = append(selectFields, scoreExpr)
+	}
+
+	sb.WriteString("SELECT " + strings.Join(selectFields, ", ") + " FROM listings")
+	sb.WriteString(whereClause)
 
 	// Build ORDER BY clause
 	// If keywords are present, order by keyword_score DESC first, then by the requested sort
@@ -203,7 +214,7 @@ func (s *Store) List(ctx context.Context, f *models.ListFilters) ([]models.Listi
 
 	rows, err := s.P.Query(ctx, sb.String(), args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -214,16 +225,19 @@ func (s *Store) List(ctx context.Context, f *models.ListFilters) ([]models.Listi
 			// Scan includes keyword_score, but we don't need to store it
 			var keywordScore int
 			if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.Category, &l.UserID, &l.Status, &l.CreatedAt, &keywordScore); err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 		} else {
 			if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.Category, &l.UserID, &l.Status, &l.CreatedAt); err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 		}
 		out = append(out, l)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return out, totalCount, nil
 }
 
 func (s *Store) Update(ctx context.Context, id int64, userID string, userRole string, p models.UpdateParams) (models.Listing, error) {

@@ -1,104 +1,210 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Navigation } from "@/components/navigation"
-import { BookOpen, Laptop, Shirt, Home, TrendingUp, Clock } from "lucide-react"
+import { BookOpen, Laptop, Shirt, Home, TrendingUp } from "lucide-react"
+import { useAuth } from "@/hooks/use-auth"
+import { orchestratorApi } from "@/lib/api/orchestrator"
+import { ListingCard } from "@/components/listing-card"
+import { getDisplayCategories, mapDisplayToCategory, mapDisplayToStatus, type DisplayCategory } from "@/lib/utils/listings"
+import type { Listing } from "@/lib/api/types"
 
-const featuredListings = [
-  {
-    id: 1,
-    title: "Calculus Textbook - 8th Edition",
-    price: 45,
-    image: "/calculus-textbook.png",
-    category: "Textbooks",
-    condition: "Like New",
-    seller: "Sarah M.",
-    timeAgo: "2h ago",
-  },
-  {
-    id: 2,
-    title: "MacBook Pro 2020 - 13 inch",
-    price: 850,
-    image: "/macbook-pro-laptop.png",
-    category: "Electronics",
-    condition: "Good",
-    seller: "Mike T.",
-    timeAgo: "5h ago",
-  },
-  {
-    id: 3,
-    title: "Mini Fridge - Perfect for Dorm",
-    price: 75,
-    image: "/mini-fridge.jpg",
-    category: "Furniture",
-    condition: "Excellent",
-    seller: "Emma L.",
-    timeAgo: "1d ago",
-  },
-  {
-    id: 4,
-    title: "University Hoodie - Size M",
-    price: 25,
-    image: "/university-hoodie.jpg",
-    category: "Clothing",
-    condition: "Like New",
-    seller: "Alex K.",
-    timeAgo: "3h ago",
-  },
-  {
-    id: 5,
-    title: "Chemistry Lab Manual",
-    price: 30,
-    image: "/chemistry-lab-manual.jpg",
-    category: "Textbooks",
-    condition: "Good",
-    seller: "Jordan P.",
-    timeAgo: "6h ago",
-  },
-  {
-    id: 6,
-    title: "Desk Lamp with USB Port",
-    price: 20,
-    image: "/modern-desk-lamp.png",
-    category: "Furniture",
-    condition: "Excellent",
-    seller: "Taylor R.",
-    timeAgo: "4h ago",
-  },
-]
-
-const categories = [
-  { name: "Textbooks", icon: BookOpen, count: 234 },
-  { name: "Electronics", icon: Laptop, count: 156 },
-  { name: "Clothing", icon: Shirt, count: 89 },
-  { name: "Furniture", icon: Home, count: 67 },
-]
+// Category icons mapping
+const categoryIcons: Record<DisplayCategory, typeof BookOpen> = {
+  Textbooks: BookOpen,
+  Electronics: Laptop,
+  Essentials: Home,
+  "Non-Essential": Shirt,
+  Other: Home,
+}
 
 export default function HomePage() {
   const observerRef = useRef<IntersectionObserver | null>(null)
+  const { token, isAuthenticated, isHydrated } = useAuth()
+  const [refreshToken, setRefreshToken] = useState<string | null>(null)
+  
+  // State for featured listings
+  const [featuredListings, setFeaturedListings] = useState<Listing[]>([])
+  const [loadingFeatured, setLoadingFeatured] = useState(false)
+  const [errorFeatured, setErrorFeatured] = useState<string | null>(null)
+  
+  // State for category counts
+  const [categoryCounts, setCategoryCounts] = useState<Record<DisplayCategory, number>>({
+    Textbooks: 0,
+    Electronics: 0,
+    Essentials: 0,
+    "Non-Essential": 0,
+    Other: 0,
+  })
+  const [loadingCategories, setLoadingCategories] = useState(false)
+  const [errorCategories, setErrorCategories] = useState<string | null>(null)
+  
+  // Get refresh token from localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setRefreshToken(localStorage.getItem("frontend-refreshToken"))
+    }
+  }, [])
 
   useEffect(() => {
+    // Disconnect previous observer
+    if (observerRef.current) {
+      observerRef.current.disconnect()
+    }
+
     observerRef.current = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             entry.target.classList.add("revealed")
+            // Stop observing once revealed
+            observerRef.current?.unobserve(entry.target)
           }
         })
       },
       { threshold: 0.1 },
     )
 
-    document.querySelectorAll(".scroll-reveal").forEach((el) => {
-      observerRef.current?.observe(el)
-    })
+    // Use setTimeout to ensure DOM is updated
+    setTimeout(() => {
+      // Observe all scroll-reveal elements
+      document.querySelectorAll(".scroll-reveal").forEach((el) => {
+        // If element is already in viewport, reveal it immediately
+        const rect = el.getBoundingClientRect()
+        const isVisible = rect.top < window.innerHeight && rect.bottom > 0
+        if (isVisible) {
+          el.classList.add("revealed")
+        } else {
+          observerRef.current?.observe(el)
+        }
+      })
+    }, 0)
 
-    return () => observerRef.current?.disconnect()
-  }, [])
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect()
+      }
+    }
+  }, [featuredListings]) // Re-run when featured listings are loaded
+
+  // Fetch featured listings when authenticated
+  const fetchFeaturedListings = useCallback(async () => {
+    if (!isHydrated || !isAuthenticated || !token || !refreshToken) {
+      return
+    }
+
+    try {
+      setLoadingFeatured(true)
+      setErrorFeatured(null)
+      
+      // Fetch first 6 AVAILABLE listings (recent first, default sort)
+      // Match the listings page behavior which filters by "Available" status
+      const backendStatus = mapDisplayToStatus("Available")
+      const filters: {
+        limit?: number
+        offset?: number
+        status?: string
+      } = {
+        limit: 6,
+        offset: 0,
+      }
+      
+      if (backendStatus) {
+        filters.status = backendStatus
+      }
+      
+      const response = await orchestratorApi.getAllListings(token, refreshToken, filters)
+      
+      // Log for debugging
+      if (process.env.NODE_ENV === "development") {
+        console.log("Home page - Featured listings response:", {
+          hasResponse: !!response,
+          hasItems: !!(response && response.items),
+          itemsLength: response?.items?.length || 0,
+          response: response,
+        })
+      }
+      
+      if (response && response.items) {
+        const items = Array.isArray(response.items) ? response.items : []
+        setFeaturedListings(items.slice(0, 6))
+        
+        if (process.env.NODE_ENV === "development") {
+          console.log("Home page - Featured listings set:", items.slice(0, 6).length)
+        }
+      } else {
+        setFeaturedListings([])
+      }
+    } catch (error) {
+      console.error("Error fetching featured listings:", error)
+      const errorMessage = error instanceof Error ? error.message : "Failed to load featured listings"
+      setErrorFeatured(errorMessage)
+      setFeaturedListings([])
+    } finally {
+      setLoadingFeatured(false)
+    }
+  }, [isHydrated, isAuthenticated, token, refreshToken])
+
+  useEffect(() => {
+    fetchFeaturedListings()
+  }, [fetchFeaturedListings])
+
+  // Fetch category counts when authenticated
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token || !refreshToken) {
+      return
+    }
+
+    const fetchCategoryCounts = async () => {
+      try {
+        setLoadingCategories(true)
+        setErrorCategories(null)
+        
+        const displayCategories = getDisplayCategories()
+        const counts: Record<DisplayCategory, number> = {
+          Textbooks: 0,
+          Electronics: 0,
+          Essentials: 0,
+          "Non-Essential": 0,
+          Other: 0,
+        }
+        
+        // Fetch count for each category
+        await Promise.all(
+          displayCategories.map(async (displayCategory) => {
+            try {
+              const backendCategory = mapDisplayToCategory(displayCategory)
+              const response = await orchestratorApi.getAllListings(token, refreshToken, {
+                category: backendCategory,
+                status: "AVAILABLE",
+                limit: 1, // We only need the count, not the items
+              })
+              
+              if (response) {
+                counts[displayCategory] = response.count || 0
+              }
+            } catch (error) {
+              console.error(`Error fetching count for category ${displayCategory}:`, error)
+              // Continue with other categories even if one fails
+            }
+          })
+        )
+        
+        setCategoryCounts(counts)
+      } catch (error) {
+        console.error("Error fetching category counts:", error)
+        setErrorCategories(error instanceof Error ? error.message : "Failed to load category counts")
+      } finally {
+        setLoadingCategories(false)
+      }
+    }
+
+    fetchCategoryCounts()
+  }, [isHydrated, isAuthenticated, token, refreshToken])
 
   return (
     <div className="min-h-screen bg-background">
@@ -135,18 +241,23 @@ export default function HomePage() {
         <div className="container mx-auto px-4">
           <h2 className="mb-10 text-3xl font-bold text-foreground scroll-reveal">Browse by Category</h2>
           <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
-            {categories.map((category, index) => {
-              const Icon = category.icon
+            {getDisplayCategories().map((categoryName, index) => {
+              const Icon = categoryIcons[categoryName]
+              const count = categoryCounts[categoryName] ?? 0
               return (
-                <Link key={category.name} href={`/listings?category=${category.name}`}>
+                <Link key={categoryName} href={`/listings?category=${categoryName}`}>
                   <Card className={`premium-card cursor-pointer scroll-reveal stagger-${index + 1}`}>
                     <CardContent className="flex flex-col items-center gap-4 p-8">
                       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20">
                         <Icon className="h-8 w-8 text-primary" />
                       </div>
                       <div className="text-center">
-                        <h3 className="font-semibold text-lg text-foreground">{category.name}</h3>
-                        <p className="text-sm text-muted-foreground">{category.count} items</p>
+                        <h3 className="font-semibold text-lg text-foreground">{categoryName}</h3>
+                        {loadingCategories ? (
+                          <p className="text-sm text-muted-foreground">Loading...</p>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">{count} items</p>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -172,44 +283,39 @@ export default function HomePage() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {featuredListings.map((listing, index) => (
-              <Link key={listing.id} href={`/listing/${listing.id}`}>
-                <Card
-                  className={`overflow-hidden premium-card cursor-pointer h-full scroll-reveal stagger-${(index % 3) + 1}`}
-                >
-                  <CardHeader className="p-0">
-                    <div className="relative aspect-square overflow-hidden bg-muted">
-                      <img
-                        src={listing.image || "/placeholder.svg"}
-                        alt={listing.title}
-                        className="h-full w-full object-cover transition-transform duration-500 hover:scale-110"
-                      />
-                      <Badge className="absolute right-3 top-3 bg-background/90 text-foreground backdrop-blur-sm">
-                        {listing.category}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    <h3 className="mb-3 font-semibold text-lg text-foreground line-clamp-2">{listing.title}</h3>
-                    <div className="mb-3 flex items-center justify-between">
-                      <span className="text-3xl font-bold text-primary">${listing.price}</span>
-                      <Badge variant="secondary" className="text-sm">
-                        {listing.condition}
-                      </Badge>
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex items-center justify-between border-t border-border p-6 text-sm text-muted-foreground">
-                    <span className="font-medium">{listing.seller}</span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-4 w-4" />
-                      {listing.timeAgo}
-                    </span>
-                  </CardFooter>
-                </Card>
-              </Link>
-            ))}
-          </div>
+          {!isAuthenticated || !isHydrated ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground">Please log in to view featured listings</p>
+            </div>
+          ) : loadingFeatured ? (
+            <div className="flex items-center justify-center min-h-[400px]">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                <p className="text-muted-foreground">Loading featured listings...</p>
+              </div>
+            </div>
+          ) : errorFeatured ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground mb-4">Failed to load featured listings</p>
+              <p className="text-sm text-muted-foreground">{errorFeatured}</p>
+            </div>
+          ) : featuredListings.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground">No featured listings available at the moment</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+              {featuredListings.map((listing, index) => (
+                <ListingCard
+                  key={listing.id}
+                  listing={listing}
+                  token={token!}
+                  refreshToken={refreshToken}
+                  index={index}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

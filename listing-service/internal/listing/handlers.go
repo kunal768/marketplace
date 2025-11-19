@@ -85,12 +85,12 @@ func (h *Handlers) ListHandler(w http.ResponseWriter, r *http.Request) {
 		f.MaxPrice = &v
 	}
 
-	items, err := h.S.List(r.Context(), &f)
+	items, totalCount, err := h.S.List(r.Context(), &f)
 	if err != nil {
 		platform.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	platform.JSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)})
+	platform.JSON(w, http.StatusOK, map[string]any{"items": items, "count": totalCount})
 }
 
 func (h *Handlers) UpdateHandler(w http.ResponseWriter, r *http.Request) {
@@ -163,7 +163,7 @@ func (h *Handlers) ChatSearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	listings, err := h.S.List(r.Context(), searchParams)
+	listings, _, err := h.S.List(r.Context(), searchParams)
 	if err != nil {
 		log.Printf("ERROR finding listings in database: %v", err)
 		http.Error(w, "Failed to retrieve listings", http.StatusInternalServerError)
