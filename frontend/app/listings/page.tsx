@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Navigation } from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
@@ -28,12 +28,14 @@ import {
   mapStatusToDisplay,
   getDisplayStatuses,
   type DisplayStatus,
+  type DisplayCategory,
 } from "@/lib/utils/listings"
 
 const categories = getDisplayCategories()
 
 export default function ListingsPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { token, isAuthenticated, isHydrated } = useAuth()
   const [refreshToken, setRefreshToken] = useState<string | null>(null)
   const [listings, setListings] = useState<Listing[]>([])
@@ -78,6 +80,18 @@ export default function ListingsPage() {
       setRefreshToken(localStorage.getItem("frontend-refreshToken"))
     }
   }, [])
+
+  // Read category from URL parameter and set initial category filter
+  useEffect(() => {
+    const categoryParam = searchParams.get("category")
+    if (categoryParam) {
+      // Validate that the category is a valid DisplayCategory
+      const validCategories = getDisplayCategories()
+      if (validCategories.includes(categoryParam as DisplayCategory)) {
+        setSelectedCategory(categoryParam)
+      }
+    }
+  }, [searchParams])
 
   // Redirect if not authenticated
   useEffect(() => {

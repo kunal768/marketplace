@@ -557,7 +557,7 @@ export const orchestratorApi = {
       params.set("sort", filters.sort)
     }
 
-    const url = `${ORCHESTRATOR_URL}/api/listings${params.toString() ? `?${params.toString()}` : ""}`
+    const url = `${ORCHESTRATOR_URL}/api/listings/${params.toString() ? `?${params.toString()}` : ""}`
 
     const makeRequest = () =>
       fetch(url, {

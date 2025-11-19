@@ -39,11 +39,14 @@ import {
   Edit,
   Trash2,
   Loader2,
+  Package,
+  AlertTriangle,
+  User as UserIcon,
 } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/hooks/use-auth"
 import { orchestratorApi } from "@/lib/api/orchestrator"
-import type { Listing, FlagReason, ListingMedia } from "@/lib/api/types"
+import type { Listing, FlagReason, ListingMedia, User } from "@/lib/api/types"
 import { formatPrice, formatTimeAgo, mapCategoryToDisplay } from "@/lib/utils/listings"
 import { useToast } from "@/hooks/use-toast"
 import { getCachedMedia, setCachedMedia, invalidateMediaCache } from "@/lib/utils/media-cache"
@@ -67,6 +70,11 @@ export default function ListingDetailPage() {
   const [deleting, setDeleting] = useState(false)
   const [mediaUrls, setMediaUrls] = useState<ListingMedia[]>([])
   const [loadingMedia, setLoadingMedia] = useState(false)
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
+  const [userListings, setUserListings] = useState<Listing[]>([])
+  const [listingsLoading, setListingsLoading] = useState(false)
+  const [listingsError, setListingsError] = useState<string | null>(null)
   const { toast } = useToast()
 
   const listingId = params?.id ? parseInt(params.id as string, 10) : null
@@ -316,6 +324,65 @@ export default function ListingDetailPage() {
   const canEdit = listing && user && (listing.user_id === user.user_id || user.role === "0")
   // Check if current user is the owner
   const isOwner = listing && user && listing.user_id === user.user_id
+  // Check if current user is admin
+  const isAdmin = user && user.role === "0"
+
+  // Fetch user profile and listings for admin view
+  const handleViewProfile = async () => {
+    if (!listing || !token || !refreshToken) return
+
+    try {
+      setListingsError(null)
+      const sellerUser = await orchestratorApi.getUserById(token, refreshToken, listing.user_id)
+      setSelectedUser(sellerUser)
+      setUserListings([])
+      setProfileDialogOpen(true)
+      
+      // Fetch user listings
+      try {
+        setListingsLoading(true)
+        const listings = await orchestratorApi.getListingsByUserId(token, refreshToken, listing.user_id)
+        setUserListings(listings || [])
+      } catch (err) {
+        console.error("Error fetching user listings:", err)
+        const errorMessage = err instanceof Error ? err.message : "Failed to fetch user listings"
+        setListingsError(errorMessage)
+      } finally {
+        setListingsLoading(false)
+      }
+    } catch (err) {
+      console.error("Error fetching user:", err)
+      const errorMessage = err instanceof Error ? err.message : "Failed to fetch user"
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Format date helper
+  const formatDate = (dateString: string) => {
+    try {
+      return new Date(dateString).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    } catch {
+      return dateString
+    }
+  }
+
+  // Get user initials helper
+  const getUserInitials = (userName: string) => {
+    return userName
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2)
+  }
 
   // Show loading state
   if (!isHydrated || loading) {
@@ -617,13 +684,134 @@ export default function ListingDetailPage() {
                     </div>
                   </div>
 
-                  <Button
-                    asChild
-                    variant="outline"
-                    className="w-full h-12 magnetic-button bg-transparent"
-                  >
-                    <Link href={`/profile`}>View Profile</Link>
-                  </Button>
+                  {isAdmin && (
+                    <>
+                      <Button
+                        variant="outline"
+                        className="w-full h-12 magnetic-button bg-transparent"
+                        onClick={handleViewProfile}
+                      >
+                        <UserIcon className="mr-2 h-5 w-5" />
+                        View Profile
+                      </Button>
+                      <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
+                        <DialogContent className="sm:max-w-[500px] max-h-[90vh] flex flex-col">
+                        <DialogHeader>
+                          <DialogTitle>User Profile</DialogTitle>
+                          <DialogDescription>View seller profile information</DialogDescription>
+                        </DialogHeader>
+                        {selectedUser && (
+                          <div className="space-y-4 py-4 overflow-y-auto flex-1 min-h-0">
+                            <div className="flex items-center gap-4">
+                              <Avatar className="h-16 w-16">
+                                <AvatarImage src="/placeholder-user.jpg" />
+                                <AvatarFallback className="text-xl">{getUserInitials(selectedUser.user_name)}</AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <h3 className="text-lg font-semibold">{selectedUser.user_name}</h3>
+                                {selectedUser.role === "0" ? (
+                                  <Badge variant="default" className="bg-purple-500 mt-1">
+                                    <Shield className="h-3 w-3 mr-1" />
+                                    Admin
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="mt-1">
+                                    User
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            <div className="space-y-3">
+                              <div>
+                                <Label className="text-muted-foreground">User ID</Label>
+                                <p className="text-sm font-mono">{selectedUser.user_id}</p>
+                              </div>
+                              <div>
+                                <Label className="text-muted-foreground">Email</Label>
+                                <p className="text-sm">{selectedUser.email}</p>
+                              </div>
+                              {selectedUser.contact?.Email && (
+                                <div>
+                                  <Label className="text-muted-foreground">Contact Email</Label>
+                                  <p className="text-sm">{selectedUser.contact.Email}</p>
+                                </div>
+                              )}
+                              {selectedUser.created_at && (
+                                <div>
+                                  <Label className="text-muted-foreground">Joined</Label>
+                                  <p className="text-sm">{formatDate(selectedUser.created_at)}</p>
+                                </div>
+                              )}
+                              {selectedUser.updated_at && (
+                                <div>
+                                  <Label className="text-muted-foreground">Last Updated</Label>
+                                  <p className="text-sm">{formatDate(selectedUser.updated_at)}</p>
+                                </div>
+                              )}
+                            </div>
+                            <div className="mt-6 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Package className="h-4 w-4 text-muted-foreground" />
+                                  <h4 className="text-lg font-semibold">Listings</h4>
+                                </div>
+                                {!listingsLoading && !listingsError && (
+                                  <Badge variant="secondary">{userListings.length} total</Badge>
+                                )}
+                              </div>
+                              {listingsLoading ? (
+                                <div className="flex items-center justify-center py-6">
+                                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                  <span className="text-sm text-muted-foreground">Loading listings...</span>
+                                </div>
+                              ) : listingsError ? (
+                                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2 text-destructive">
+                                  <AlertTriangle className="h-4 w-4" />
+                                  <span className="text-sm">{listingsError}</span>
+                                </div>
+                              ) : userListings.length === 0 ? (
+                                <div className="p-4 rounded-lg border bg-muted/30 text-center text-sm text-muted-foreground">
+                                  This user has no listings yet.
+                                </div>
+                              ) : (
+                                <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
+                                  {userListings.map((userListing) => (
+                                    <Card key={userListing.id} className="border bg-muted/30">
+                                      <CardContent className="p-4 space-y-2">
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div>
+                                            <p className="font-semibold text-sm line-clamp-2">{userListing.title}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                              Posted {formatDate(userListing.created_at)}
+                                            </p>
+                                          </div>
+                                          <Badge variant="outline" className="text-xs">
+                                            {userListing.status}
+                                          </Badge>
+                                        </div>
+                                        <div className="flex items-center justify-between text-sm">
+                                          <span className="font-semibold">{formatPrice(userListing.price)}</span>
+                                          <Link href={`/listing/${userListing.id}`} className="text-primary hover:underline text-xs">
+                                            View Listing
+                                          </Link>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        <DialogFooter>
+                          <Button variant="outline" onClick={() => setProfileDialogOpen(false)}>
+                            Close
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </>
+                  )}
                 </CardContent>
               </Card>
 
