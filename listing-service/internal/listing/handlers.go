@@ -163,6 +163,14 @@ func (h *Handlers) ChatSearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if searchParams.MinPrice != nil {
+		*searchParams.MinPrice = *searchParams.MinPrice * 100
+	}
+
+	if searchParams.MaxPrice != nil {
+		*searchParams.MaxPrice = *searchParams.MaxPrice * 100
+	}
+
 	listings, _, err := h.S.List(r.Context(), searchParams)
 	if err != nil {
 		log.Printf("ERROR finding listings in database: %v", err)

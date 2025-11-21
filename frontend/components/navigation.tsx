@@ -130,22 +130,36 @@ export function Navigation() {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+      const target = event.target as HTMLElement
+      // Check if click is on a link or inside a link
+      const isLink = target.closest('a')
+      
+      if (searchRef.current && !searchRef.current.contains(target)) {
         setShowSearchResults(false)
+      } else if (isLink && searchRef.current?.contains(isLink)) {
+        // If clicking on a link inside search results, let it handle navigation first
+        // The link's onClick will close the dropdown
+        return
       }
     }
 
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
+    // Use 'click' instead of 'mousedown' to allow Link onClick to fire first
+    document.addEventListener("click", handleClickOutside)
+    return () => document.removeEventListener("click", handleClickOutside)
   }, [])
 
   // Helper to close search when a result is clicked
-  const handleResultClick = () => {
+  const handleResultClick = (e: React.MouseEvent, listingId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    console.log("[v0] Navigation result handler clicked, listingId:", listingId)
     setShowSearchResults(false)
     setSearchQuery("")
+    router.push(`/listing/${listingId}`)
   }
 
   const handleSearchSubmit = (e: React.FormEvent) => {
+    console.log("[v0] Navigation search submit called")
     e.preventDefault()
     if (searchQuery.trim()) {
       setShowSearchResults(false)
@@ -190,11 +204,10 @@ export function Navigation() {
               {showSearchResults && searchResults.length > 0 && (
                 <div className="absolute top-full mt-2 w-full bg-background border border-border rounded-xl shadow-lg overflow-hidden z-50">
                   {searchResults.map((listing) => (
-                    <Link
+                    <div
                       key={listing.id}
-                      href={`/listing/${listing.id}`}
-                      onClick={handleResultClick}
-                      className="w-full px-4 py-3 flex items-center gap-3 hover:bg-muted transition-colors text-left border-b border-border last:border-b-0 block"
+                      onClick={(e) => handleResultClick(e, String(listing.id))}
+                      className="w-full px-4 py-3 flex items-center gap-3 hover:bg-muted transition-colors text-left border-b border-border last:border-b-0 cursor-pointer"
                     >
                       <div className="flex-shrink-0 w-12 h-12 bg-muted rounded-lg overflow-hidden">
                         <img
@@ -211,7 +224,7 @@ export function Navigation() {
                           <span className="text-xs text-muted-foreground">{mapCategoryToDisplay(listing.category)}</span>
                         </div>
                       </div>
-                    </Link>
+                    </div>
                   ))}
                 </div>
               )}
@@ -318,11 +331,10 @@ export function Navigation() {
             {showSearchResults && searchResults.length > 0 && (
               <div className="absolute top-full mt-2 w-full bg-background border border-border rounded-xl shadow-lg overflow-hidden z-50">
                 {searchResults.map((listing) => (
-                  <Link
+                  <div
                     key={listing.id}
-                    href={`/listing/${listing.id}`}
-                    onClick={handleResultClick}
-                    className="w-full px-3 py-2 flex items-center gap-2 hover:bg-muted transition-colors text-left border-b border-border last:border-b-0 block"
+                    onClick={(e) => handleResultClick(e, String(listing.id))}
+                    className="w-full px-3 py-2 flex items-center gap-2 hover:bg-muted transition-colors text-left border-b border-border last:border-b-0 cursor-pointer"
                   >
                     <div className="flex-shrink-0 w-10 h-10 bg-muted rounded-lg overflow-hidden">
                       <img
@@ -337,7 +349,7 @@ export function Navigation() {
                         <span className="text-xs font-semibold text-primary">{formatPrice(listing.price)}</span>
                       </div>
                     </div>
-                  </Link>
+                  </div>
                 ))}
               </div>
             )}
