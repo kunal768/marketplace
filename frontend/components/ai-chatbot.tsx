@@ -5,16 +5,25 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { X, Send, Sparkles } from "lucide-react"
+import { X, Send, Sparkles } from 'lucide-react'
+import { useAuth } from "@/hooks/use-auth"
+import { orchestratorApi } from "@/lib/api/orchestrator"
 
 interface Message {
   role: "user" | "assistant"
   content: string
 }
 
-const STORAGE_KEY = "campusmart-chat-messages"
-
 export function AIChatbot({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const { token } = useAuth()
+  const [refreshToken, setRefreshToken] = useState<string | null>(null)
+  
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setRefreshToken(localStorage.getItem('frontend-refreshToken'))
+    }
+  }, [])
+
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -22,40 +31,64 @@ export function AIChatbot({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
     },
   ])
   const [input, setInput] = useState("")
+  const [isSearching, setIsSearching] = useState(false)
 
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      try {
-        setMessages(JSON.parse(stored))
-      } catch (e) {
-        console.error("[v0] Failed to parse stored messages:", e)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    if (messages.length > 1) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages))
-    }
-  }, [messages])
-
-  const handleSend = (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim()) return
+    if (!input.trim() || !token || !refreshToken) return
 
-    setMessages([...messages, { role: "user", content: input }])
+    const userMessage = input.trim()
+    setMessages([...messages, { role: "user", content: userMessage }])
     setInput("")
+    setIsSearching(true)
 
-    setTimeout(() => {
+    try {
+      console.log("[v0] AI chatbot searching for:", userMessage)
+      
+      const response = await orchestratorApi.chatSearch(token, refreshToken, userMessage)
+      
+      console.log("[v0] AI chatbot full response:", response)
+      console.log("[v0] AI chatbot listings:", response?.listings)
+      console.log("[v0] AI chatbot listings length:", response?.listings?.length)
+
+      if (response && Array.isArray(response.listings) && response.listings.length > 0) {
+        // Emit custom event with search results to navigation
+        const event = new CustomEvent("ai-search-results", {
+          detail: {
+            query: userMessage,
+            results: response.listings.slice(0, 4), // Top 4 results
+          },
+        })
+        window.dispatchEvent(event)
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `I found ${response.listings.length} listing${response.listings.length === 1 ? "" : "s"} matching your search! Check the search bar to see the top results.`,
+          },
+        ])
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "I couldn't find any listings matching your search. Try different keywords!",
+          },
+        ])
+      }
+    } catch (error) {
+      console.error("[v0] AI chatbot search error:", error)
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "I found several items matching your search! Let me show you the best options...",
+          content: "Sorry, I encountered an error while searching. Please try again.",
         },
       ])
-    }, 1000)
+    } finally {
+      setIsSearching(false)
+    }
   }
 
   if (!isOpen) return null
@@ -101,6 +134,13 @@ export function AIChatbot({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                 </div>
               </div>
             ))}
+            {isSearching && (
+              <div className="flex justify-start animate-float-in-up">
+                <div className="bg-muted text-foreground rounded-2xl px-4 py-2">
+                  <p className="text-sm">Searching...</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Input */}
@@ -111,8 +151,9 @@ export function AIChatbot({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                 onChange={(e) => setInput(e.target.value)}
                 placeholder='Search for a "CMPE 202" textbook...'
                 className="flex-1 bg-input border-border"
+                disabled={isSearching}
               />
-              <Button type="submit" size="icon" className="magnetic-button cursor-pointer">
+              <Button type="submit" size="icon" className="magnetic-button cursor-pointer" disabled={isSearching}>
                 <Send className="h-4 w-4" />
               </Button>
             </div>
