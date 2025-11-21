@@ -21,6 +21,7 @@ import type {
   UpdateUserRequest,
   UpdateUserResponse,
   ListingMedia,
+  ChatSearchResponse, // Merged: Kept the new ChatSearchResponse import
 } from "./types"
 import { isTokenExpired } from "@/lib/utils/jwt"
 
@@ -1319,6 +1320,55 @@ export const orchestratorApi = {
         const newToken = await getValidToken(refreshToken)
         return fetch(url, {
           method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        })
+      },
+    )
+  },
+
+  /**
+   * Merged: New function from the second file
+   * Searches for chat conversations based on a query.
+   * @param token - Access token
+   * @param refreshToken - Refresh token
+   * @param query - Search query
+   * @returns Search results
+   */
+  async chatSearch(
+    token: string,
+    refreshToken: string | null,
+    query: string,
+  ): Promise<ChatSearchResponse> { 
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/chatsearch`
+
+    const body = { query }
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<ChatSearchResponse>( 
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "POST",
           headers: {
             Authorization: `Bearer ${newToken || validToken}`,
             "Content-Type": "application/json",

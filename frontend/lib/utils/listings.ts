@@ -129,7 +129,7 @@ export function mapDisplayToCategory(displayName: string): BackendCategory {
  * @returns Array of display category names
  */
 export function getDisplayCategories(): DisplayCategory[] {
-  return ["Textbooks", "Electronics", "Essentials", "Non-Essential", "Other"]
+  return ["Textbooks", "Electronics", "Essentials", "Other"]
 }
 
 /**

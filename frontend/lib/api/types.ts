@@ -126,13 +126,8 @@ export interface DeleteFlagListingResponse {
   message: string
 }
 
-export interface UpdateUserRequest {
-  user_id: string
-  user_name: string
-  email: string
-  contact: {
-    Email: string
-  }
+export interface ChatSearchResponse {
+  listings: Listing[]
 }
 
 export interface UpdateUserResponse {
@@ -147,3 +142,15 @@ export interface ListingMedia {
   created_at: string
 }
 
+export interface UpdateUserRequest {
+  user_id: string
+  user_name: string
+  email: string
+  contact: {
+    Email: string
+  }
+}
+
+export interface ChatSearchResponse {
+  listings: Listing[]
+}
