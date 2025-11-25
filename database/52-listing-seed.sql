@@ -32,10 +32,6 @@ WITH
       ('OTHER',
         ARRAY['Misc Bundle','Surplus Item','Grab Bag','Random Lot'],
         ARRAY['Great condition','Like new','Lightly used','Campus pickup available'],
-        1000, 10000),
-      ('TEST',
-        ARRAY['Test Listing A','Test Listing B','Test Listing C','Test Listing D'],
-        ARRAY['Great condition','Like new','Lightly used','Campus pickup available'],
         1000, 10000)
     ) AS v(category, titles, descriptions, min_price_cents, max_price_cents)
   ),

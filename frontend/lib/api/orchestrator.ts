@@ -23,6 +23,7 @@ import type {
   ListingMedia,
   ChatSearchResponse,
   ChatMessage,
+  AnalyticsResponse,
 } from "./types"
 import { isTokenExpired } from "@/lib/utils/jwt"
 
@@ -1380,6 +1381,43 @@ export const orchestratorApi = {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(body),
+        })
+      },
+    )
+  },
+
+  /**
+   * Get analytics data (admin only)
+   * @param token - Access token
+   * @param refreshToken - Refresh token
+   * @returns Analytics response with overview stats and charts data
+   */
+  async getAnalytics(token: string, refreshToken: string | null): Promise<AnalyticsResponse> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const makeRequest = () =>
+      fetch(`${ORCHESTRATOR_URL}/api/analytics`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<AnalyticsResponse>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(`${ORCHESTRATOR_URL}/api/analytics`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
         })
       },
     )

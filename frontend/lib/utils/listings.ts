@@ -3,7 +3,7 @@
  */
 
 // Backend category values (matching backend exactly)
-export type BackendCategory = "TEXTBOOK" | "GADGET" | "ESSENTIAL" | "NON-ESSENTIAL" | "OTHER" | "TEST"
+export type BackendCategory = "TEXTBOOK" | "GADGET" | "ESSENTIAL" | "NON-ESSENTIAL" | "OTHER"
 
 // Frontend display category names
 export type DisplayCategory = "Textbooks" | "Electronics" | "Essentials" | "Non-Essential" | "Other"
@@ -14,8 +14,7 @@ const CATEGORY_TO_DISPLAY: Record<BackendCategory, DisplayCategory> = {
   GADGET: "Electronics",
   ESSENTIAL: "Essentials",
   "NON-ESSENTIAL": "Non-Essential",
-  OTHER: "Other",
-  TEST: "Other", // Hide TEST category from users, map to Other
+  OTHER: "Other"
 }
 
 // Reverse mapping from frontend display to backend

@@ -81,11 +81,11 @@ export default function AdminDashboardPage() {
       title: "Analytics",
       description: "View platform statistics and performance metrics",
       icon: BarChart3,
-      href: "#",
+      href: "/admin/analytics",
       color: "text-green-500",
       bgColor: "bg-green-500/10",
       borderColor: "border-green-500/20",
-      disabled: true,
+      disabled: false,
     },
     {
       title: "System Settings",
@@ -195,32 +195,6 @@ export default function AdminDashboardPage() {
           })}
         </div>
 
-        {/* Quick Stats (Future Enhancement) */}
-        <Card className="mt-8 animate-float-in-up">
-          <CardHeader>
-            <CardTitle>Quick Stats</CardTitle>
-            <CardDescription>Platform statistics at a glance</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 rounded-lg border bg-muted/50">
-                <p className="text-sm text-muted-foreground mb-1">Total Listings</p>
-                <p className="text-2xl font-bold">-</p>
-                <p className="text-xs text-muted-foreground mt-1">Coming soon</p>
-              </div>
-              <div className="p-4 rounded-lg border bg-muted/50">
-                <p className="text-sm text-muted-foreground mb-1">Active Users</p>
-                <p className="text-2xl font-bold">-</p>
-                <p className="text-xs text-muted-foreground mt-1">Coming soon</p>
-              </div>
-              <div className="p-4 rounded-lg border bg-muted/50">
-                <p className="text-sm text-muted-foreground mb-1">Flagged Items</p>
-                <p className="text-2xl font-bold">-</p>
-                <p className="text-xs text-muted-foreground mt-1">Coming soon</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   )

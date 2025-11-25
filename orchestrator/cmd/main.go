@@ -9,6 +9,7 @@ import (
 
 	"github.com/joho/godotenv"
 	httplib "github.com/kunal768/cmpe202/http-lib"
+	"github.com/kunal768/cmpe202/orchestrator/analytics"
 	chatmessage "github.com/kunal768/cmpe202/orchestrator/chat-message"
 	dbclient "github.com/kunal768/cmpe202/orchestrator/clients/db"
 	mongoclient "github.com/kunal768/cmpe202/orchestrator/clients/mongo"
@@ -82,6 +83,11 @@ func main() {
 	listingService := listings.NewListingService(baseUrl, sharedSecret)
 	listingEndpoints := listings.NewEndpoints(listingService)
 
+	// Create analytics service and endpoints
+	analyticsRepo := analytics.NewRepository(dbPool)
+	analyticsService := analytics.NewService(analyticsRepo)
+	analyticsEndpoints := analytics.NewEndpoints(analyticsService)
+
 	// Setup HTTP server
 	mux := http.NewServeMux()
 
@@ -93,6 +99,9 @@ func main() {
 
 	// Register listing routes with middleware
 	listingEndpoints.RegisterRoutes(mux, dbPool)
+
+	// Register analytics routes with middleware
+	analyticsEndpoints.RegisterRoutes(mux, dbPool)
 
 	// Health check endpoint
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {

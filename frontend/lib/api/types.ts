@@ -147,6 +147,41 @@ export interface ListingMedia {
   created_at: string
 }
 
+export interface OverviewStats {
+  total_users: number
+  total_listings: number
+  open_flags: number
+  total_flags: number
+}
+
+export interface ListingsByStatus {
+  status: string
+  count: number
+}
+
+export interface ListingsByCategory {
+  category: string
+  count: number
+}
+
+export interface FlagsByStatus {
+  status: string
+  count: number
+}
+
+export interface FlagsByReason {
+  reason: string
+  count: number
+}
+
+export interface AnalyticsResponse {
+  overview: OverviewStats
+  listings_by_status: ListingsByStatus[]
+  listings_by_category: ListingsByCategory[]
+  flags_by_status: FlagsByStatus[]
+  flags_by_reason: FlagsByReason[]
+}
+
 export interface UpdateUserRequest {
   user_id: string
   user_name: string
