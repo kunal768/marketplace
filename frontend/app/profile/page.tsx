@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { Edit, Trash2, MapPin, Mail, Calendar, Package, Filter } from "lucide-react"
+import { Edit, Trash2, MapPin, Mail, Calendar, Package, Filter, Heart } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/hooks/use-auth"
 import { orchestratorApi } from "@/lib/api/orchestrator"
@@ -44,12 +44,18 @@ export default function ProfilePage() {
   const [refreshToken, setRefreshToken] = useState<string | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [listings, setListings] = useState<Listing[]>([])
+  const [savedListings, setSavedListings] = useState<Listing[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingSaved, setLoadingSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<DisplayStatus>("All")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [sortBy, setSortBy] = useState("recent")
   const [searchQuery, setSearchQuery] = useState("")
+  const [savedActiveTab, setSavedActiveTab] = useState<DisplayStatus>("All")
+  const [savedSelectedCategory, setSavedSelectedCategory] = useState<string>("all")
+  const [savedSortBy, setSavedSortBy] = useState("recent")
+  const [savedSearchQuery, setSavedSearchQuery] = useState("")
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editUserName, setEditUserName] = useState("")
   const [editEmail, setEditEmail] = useState("")
@@ -57,6 +63,7 @@ export default function ProfilePage() {
   const [updating, setUpdating] = useState(false)
   const [listingMediaUrls, setListingMediaUrls] = useState<Map<number, string>>(new Map())
   const [loadingMedia, setLoadingMedia] = useState<Set<number>>(new Set())
+  const [saving, setSaving] = useState(false)
   const loadingMediaRef = useRef<Set<number>>(new Set())
   const { toast } = useToast()
 
@@ -91,13 +98,15 @@ export default function ProfilePage() {
         setError(null)
 
         // Fetch user info and listings in parallel
-        const [userResponse, listingsResponse] = await Promise.all([
+        const [userResponse, listingsResponse, savedListingsResponse] = await Promise.all([
           orchestratorApi.getUser(token, refreshToken),
           orchestratorApi.getUserListings(token, refreshToken),
+          orchestratorApi.getSavedListings(token, refreshToken).catch(() => []), // Don't fail if saved listings fail
         ])
 
         setUser(userResponse.user)
         setListings(listingsResponse || [])
+        setSavedListings(savedListingsResponse || [])
       } catch (err) {
         console.error("Error fetching profile data:", err)
         const errorMessage = err instanceof Error ? err.message : "Failed to fetch profile data"
@@ -151,6 +160,48 @@ export default function ProfilePage() {
 
     return filtered
   }, [listings, activeTab, selectedCategory, sortBy, searchQuery])
+
+  // Filter and sort saved listings
+  const filteredAndSortedSavedListings = useMemo(() => {
+    let filtered = [...savedListings]
+
+    // Filter by status (tab)
+    if (savedActiveTab !== "All") {
+      const backendStatus = mapDisplayToStatus(savedActiveTab)
+      if (backendStatus) {
+        filtered = filtered.filter((listing) => listing.status === backendStatus)
+      }
+    }
+
+    // Filter by category
+    if (savedSelectedCategory && savedSelectedCategory !== "all") {
+      const backendCategory = mapDisplayToCategory(savedSelectedCategory)
+      filtered = filtered.filter((listing) => listing.category === backendCategory)
+    }
+
+    // Filter by search query
+    if (savedSearchQuery.trim()) {
+      const query = savedSearchQuery.toLowerCase()
+      filtered = filtered.filter(
+        (listing) =>
+          listing.title.toLowerCase().includes(query) ||
+          listing.description?.toLowerCase().includes(query),
+      )
+    }
+
+    // Sort listings
+    const backendSort = mapSortToBackend(savedSortBy)
+    if (backendSort === "price_asc") {
+      filtered.sort((a, b) => a.price - b.price)
+    } else if (backendSort === "price_desc") {
+      filtered.sort((a, b) => b.price - a.price)
+    } else {
+      // Default: most recent (created_at DESC)
+      filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    }
+
+    return filtered
+  }, [savedListings, savedActiveTab, savedSelectedCategory, savedSortBy, savedSearchQuery])
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -226,12 +277,13 @@ export default function ProfilePage() {
 
   // Fetch media for listings when they're loaded
   useEffect(() => {
-    if (!token || !refreshToken || listings.length === 0) {
+    if (!token || !refreshToken) {
       return
     }
 
     // Fetch media for all listings (can be optimized with IntersectionObserver if needed)
-    listings.forEach((listing) => {
+    const allListings = [...listings, ...savedListings]
+    allListings.forEach((listing) => {
       // Check if we already have media for this listing
       const hasMedia = listingMediaUrls.has(listing.id)
       const isCurrentlyLoading = loadingMediaRef.current.has(listing.id)
@@ -241,7 +293,22 @@ export default function ProfilePage() {
       }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listings, token, refreshToken, fetchListingMedia])
+  }, [listings, savedListings, token, refreshToken, fetchListingMedia])
+
+  // Refresh saved listings (e.g., after unsaving)
+  const refreshSavedListings = useCallback(async () => {
+    if (!token || !refreshToken) return
+
+    try {
+      setLoadingSaved(true)
+      const saved = await orchestratorApi.getSavedListings(token, refreshToken)
+      setSavedListings(saved || [])
+    } catch (err) {
+      console.error("Error refreshing saved listings:", err)
+    } finally {
+      setLoadingSaved(false)
+    }
+  }, [token, refreshToken])
 
   // Handle edit dialog open
   const handleOpenEditDialog = () => {
@@ -545,6 +612,193 @@ export default function ProfilePage() {
                               </CardContent>
                             </Card>
                           </Link>
+                        )
+                      })}
+                    </div>
+                  )}
+                </TabsContent>
+              ))}
+            </Tabs>
+          </CardContent>
+        </Card>
+
+        <Card className="animate-float-in-up stagger-5 mt-8">
+          <CardHeader>
+            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+              <h2 className="text-2xl font-bold flex items-center gap-2">
+                <Heart className="h-6 w-6 text-red-500" />
+                Saved Listings
+              </h2>
+              <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                <div className="relative flex-1 md:flex-initial md:w-64">
+                  <Input
+                    placeholder="Search saved listings..."
+                    value={savedSearchQuery}
+                    onChange={(e) => setSavedSearchQuery(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+                <Select value={savedSelectedCategory} onValueChange={setSavedSelectedCategory}>
+                  <SelectTrigger className="w-full md:w-[180px]">
+                    <Filter className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="All Categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={savedSortBy} onValueChange={setSavedSortBy}>
+                  <SelectTrigger className="w-full md:w-[180px]">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sortOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Tabs value={savedActiveTab} onValueChange={(value) => setSavedActiveTab(value as DisplayStatus)}>
+              <TabsList className="mb-6">
+                {statuses.map((status) => (
+                  <TabsTrigger key={status} value={status}>
+                    {status}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+
+              {statuses.map((status) => (
+                <TabsContent key={status} value={status} className="space-y-6">
+                  {loadingSaved ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                      <p>Loading saved listings...</p>
+                    </div>
+                  ) : filteredAndSortedSavedListings.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Heart className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No saved listings found</p>
+                      {savedActiveTab !== "All" && (
+                        <p className="text-sm mt-2">
+                          You don't have any {status.toLowerCase()} saved listings
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {filteredAndSortedSavedListings.map((listing, index) => {
+                        const isSold = listing.status === "SOLD"
+                        const isAvailable = listing.status === "AVAILABLE"
+
+                        return (
+                          <div key={listing.id} className="block group relative">
+                            <Link href={`/listing/${listing.id}`} className="block">
+                              <Card
+                                className={`premium-card cursor-pointer hover:shadow-lg transition transform hover:-translate-y-1 ${
+                                  isSold ? "opacity-75" : ""
+                                } animate-float-in-up stagger-${(index % 3) + 1}`}
+                              >
+                                <CardHeader className="p-0">
+                                  <div className="relative aspect-square overflow-hidden bg-muted rounded-t-xl">
+                                    {loadingMedia.has(listing.id) ? (
+                                      <div className="flex items-center justify-center h-full">
+                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                                      </div>
+                                    ) : (
+                                      <img
+                                        src={listingMediaUrls.get(listing.id) || "/placeholder.svg"}
+                                        alt={listing.title}
+                                        className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                        onError={(e) => {
+                                          // Fallback to placeholder if image fails to load
+                                          ;(e.target as HTMLImageElement).src = "/placeholder.svg"
+                                        }}
+                                      />
+                                    )}
+                                    <Badge
+                                      className={`absolute right-3 top-3 ${
+                                        isSold ? "bg-green-500 text-white" : "bg-slate-900/90 text-white backdrop-blur-sm"
+                                      }`}
+                                    >
+                                      {isSold ? "Sold" : mapCategoryToDisplay(listing.category)}
+                                    </Badge>
+                                    <div className="absolute left-3 top-3">
+                                      <Heart className="h-5 w-5 text-red-500 fill-current" />
+                                    </div>
+                                  </div>
+                                </CardHeader>
+
+                                <CardContent className="p-4">
+                                  <h3 className="font-semibold text-foreground mb-2 line-clamp-2 group-hover:text-primary transition-colors">
+                                    {listing.title}
+                                  </h3>
+
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-2xl font-bold text-primary">
+                                      {formatPrice(listing.price)}
+                                    </span>
+                                    <Badge className="bg-slate-900 text-white font-medium">
+                                      {mapStatusToDisplay(listing.status)}
+                                    </Badge>
+                                  </div>
+
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatDate(listing.created_at)}
+                                  </p>
+                                </CardContent>
+                              </Card>
+                            </Link>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="absolute top-2 right-2 z-10 bg-white/90 hover:bg-white"
+                              onClick={async (e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                if (!token || !refreshToken || saving) return
+
+                                const listingIdToRemove = listing.id
+                                
+                                // Optimistically update the UI immediately
+                                setSavedListings((prev) => prev.filter((l) => l.id !== listingIdToRemove))
+
+                                try {
+                                  setSaving(true)
+                                  await orchestratorApi.unsaveListing(token, refreshToken, listingIdToRemove)
+                                  // Refresh from server to ensure consistency
+                                  await refreshSavedListings()
+                                  toast({
+                                    title: "Listing Unsaved",
+                                    description: "The listing has been removed from your saved items.",
+                                  })
+                                } catch (err) {
+                                  console.error("Error unsaving listing:", err)
+                                  // Revert optimistic update on error
+                                  await refreshSavedListings()
+                                  toast({
+                                    title: "Error",
+                                    description: "Failed to unsave listing",
+                                    variant: "destructive",
+                                  })
+                                } finally {
+                                  setSaving(false)
+                                }
+                              }}
+                              disabled={saving}
+                            >
+                              <Heart className="h-4 w-4 text-red-500 fill-current" />
+                            </Button>
+                          </div>
                         )
                       })}
                     </div>

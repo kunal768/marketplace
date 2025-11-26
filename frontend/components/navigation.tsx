@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Search, Plus, MessageSquare, User, Settings, LogOut, Menu, Shield } from 'lucide-react'
+import { Search, Plus, MessageSquare, User, LogOut, Menu, Shield } from 'lucide-react'
 import { useState, useEffect, useRef } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useUnreadCount } from "@/hooks/use-unread-count"
@@ -282,12 +282,6 @@ export function Navigation() {
                     My Profile
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild className="cursor-pointer">
-                  <Link href="/profile">
-                    <Settings className="mr-2 h-4 w-4" />
-                    My Listings
-                  </Link>
-                </DropdownMenuItem>
                 {user?.role === "0" && (
                   <DropdownMenuItem asChild className="cursor-pointer">
                     <Link href="/admin/dashboard">
@@ -400,12 +394,6 @@ export function Navigation() {
                 <Link href="/profile">
                   <User className="mr-2 h-4 w-4" />
                   My Profile
-                </Link>
-              </Button>
-              <Button asChild variant="ghost" className="justify-start">
-                <Link href="/profile">
-                  <Settings className="mr-2 h-4 w-4" />
-                  My Listings
                 </Link>
               </Button>
               {user?.role === "0" && (

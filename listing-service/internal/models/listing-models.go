@@ -152,3 +152,14 @@ type ListingMedia struct {
 type UpdateMediaParams struct {
 	NewURL string `json:"new_url"`
 }
+
+// SavedListing represents a saved listing entry
+type SavedListing struct {
+	ID        int64     `json:"id" db:"id"`
+	UserID    uuid.UUID `json:"user_id" db:"user_id"`
+	ListingID int64     `json:"listing_id" db:"listing_id"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	
+	// Listing information (populated when fetching saved listings)
+	Listing Listing `json:"listing,omitempty"`
+}

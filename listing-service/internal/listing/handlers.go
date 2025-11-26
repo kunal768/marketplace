@@ -763,3 +763,126 @@ func (h *Handlers) DeleteMediaUrlHandler(w http.ResponseWriter, r *http.Request)
 		"message": "Media URL deleted successfully",
 	})
 }
+
+// SaveListingHandler handles saving a listing for a user
+func (h *Handlers) SaveListingHandler(w http.ResponseWriter, r *http.Request) {
+	// Validate user is authenticated
+	userID, err := common.ValidateUserAndRoleAuth(w, r)
+	if err != nil {
+		return
+	}
+
+	// Get listing ID from URL path
+	listingIDStr := chi.URLParam(r, "id")
+	if listingIDStr == "" {
+		platform.Error(w, http.StatusBadRequest, "listing ID is required")
+		return
+	}
+
+	listingID, err := strconv.ParseInt(listingIDStr, 10, 64)
+	if err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid listing ID")
+		return
+	}
+
+	// Save the listing
+	err = h.S.SaveListing(r.Context(), userID, listingID)
+	if err != nil {
+		if err.Error() == "listing not found" {
+			platform.Error(w, http.StatusNotFound, "listing not found")
+			return
+		}
+		log.Printf("Error saving listing: %v", err)
+		platform.Error(w, http.StatusInternalServerError, "failed to save listing")
+		return
+	}
+
+	platform.JSON(w, http.StatusCreated, map[string]string{"message": "Listing saved successfully"})
+}
+
+// UnsaveListingHandler handles unsaving a listing for a user
+func (h *Handlers) UnsaveListingHandler(w http.ResponseWriter, r *http.Request) {
+	// Validate user is authenticated
+	userID, err := common.ValidateUserAndRoleAuth(w, r)
+	if err != nil {
+		return
+	}
+
+	// Get listing ID from URL path
+	listingIDStr := chi.URLParam(r, "id")
+	if listingIDStr == "" {
+		platform.Error(w, http.StatusBadRequest, "listing ID is required")
+		return
+	}
+
+	listingID, err := strconv.ParseInt(listingIDStr, 10, 64)
+	if err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid listing ID")
+		return
+	}
+
+	// Unsave the listing
+	err = h.S.UnsaveListing(r.Context(), userID, listingID)
+	if err != nil {
+		if err.Error() == "saved listing not found" {
+			platform.Error(w, http.StatusNotFound, "saved listing not found")
+			return
+		}
+		log.Printf("Error unsaving listing: %v", err)
+		platform.Error(w, http.StatusInternalServerError, "failed to unsave listing")
+		return
+	}
+
+	platform.JSON(w, http.StatusOK, map[string]string{"message": "Listing unsaved successfully"})
+}
+
+// IsListingSavedHandler checks if a listing is saved by the current user
+func (h *Handlers) IsListingSavedHandler(w http.ResponseWriter, r *http.Request) {
+	// Validate user is authenticated
+	userID, err := common.ValidateUserAndRoleAuth(w, r)
+	if err != nil {
+		return
+	}
+
+	// Get listing ID from URL path
+	listingIDStr := chi.URLParam(r, "id")
+	if listingIDStr == "" {
+		platform.Error(w, http.StatusBadRequest, "listing ID is required")
+		return
+	}
+
+	listingID, err := strconv.ParseInt(listingIDStr, 10, 64)
+	if err != nil {
+		platform.Error(w, http.StatusBadRequest, "invalid listing ID")
+		return
+	}
+
+	// Check if listing is saved
+	isSaved, err := h.S.IsListingSaved(r.Context(), userID, listingID)
+	if err != nil {
+		log.Printf("Error checking if listing is saved: %v", err)
+		platform.Error(w, http.StatusInternalServerError, "failed to check if listing is saved")
+		return
+	}
+
+	platform.JSON(w, http.StatusOK, map[string]bool{"is_saved": isSaved})
+}
+
+// GetSavedListingsHandler handles getting all saved listings for the current user
+func (h *Handlers) GetSavedListingsHandler(w http.ResponseWriter, r *http.Request) {
+	// Validate user is authenticated
+	userID, err := common.ValidateUserAndRoleAuth(w, r)
+	if err != nil {
+		return
+	}
+
+	// Fetch saved listings from repository
+	savedListings, err := h.S.GetSavedListings(r.Context(), userID)
+	if err != nil {
+		log.Printf("Error fetching saved listings: %v", err)
+		platform.Error(w, http.StatusInternalServerError, "failed to fetch saved listings")
+		return
+	}
+
+	platform.JSON(w, http.StatusOK, savedListings)
+}

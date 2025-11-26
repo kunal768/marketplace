@@ -1422,4 +1422,186 @@ export const orchestratorApi = {
       },
     )
   },
+
+  /**
+   * Save a listing for the current user
+   * @param token - Access token
+   * @param refreshToken - Refresh token
+   * @param listingId - Listing ID to save
+   * @returns Success response
+   */
+  async saveListing(
+    token: string,
+    refreshToken: string | null,
+    listingId: number,
+  ): Promise<{ message: string }> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/save/${listingId}`
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<{ message: string }>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+        })
+      },
+    )
+  },
+
+  /**
+   * Unsave a listing for the current user
+   * @param token - Access token
+   * @param refreshToken - Refresh token
+   * @param listingId - Listing ID to unsave
+   * @returns Success response
+   */
+  async unsaveListing(
+    token: string,
+    refreshToken: string | null,
+    listingId: number,
+  ): Promise<{ message: string }> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/save/${listingId}`
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    return handleResponse<{ message: string }>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+        })
+      },
+    )
+  },
+
+  /**
+   * Check if a listing is saved by the current user
+   * @param token - Access token
+   * @param refreshToken - Refresh token
+   * @param listingId - Listing ID to check
+   * @returns Boolean indicating if listing is saved
+   */
+  async isListingSaved(
+    token: string,
+    refreshToken: string | null,
+    listingId: number,
+  ): Promise<boolean> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/save/${listingId}/check`
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    const result = await handleResponse<{ is_saved: boolean }>(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+        })
+      },
+    )
+
+    return result.is_saved
+  },
+
+  /**
+   * Get all saved listings for the current user
+   * @param token - Access token
+   * @param refreshToken - Refresh token
+   * @returns Array of saved listings
+   */
+  async getSavedListings(
+    token: string,
+    refreshToken: string | null,
+  ): Promise<Listing[]> {
+    const validToken = (await getValidToken(refreshToken)) || token
+
+    const url = `${ORCHESTRATOR_URL}/api/listings/saved`
+
+    const makeRequest = () =>
+      fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+    const response = await makeRequest()
+
+    // The API returns an array of saved listings with nested listing objects
+    const savedListings = await handleResponse<
+      Array<{ listing: Listing; listing_id: number; created_at: string; id: number; user_id: string }>
+    >(
+      response,
+      refreshToken,
+      tokenUpdateCallback || undefined,
+      async () => {
+        const newToken = await getValidToken(refreshToken)
+        return fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${newToken || validToken}`,
+            "Content-Type": "application/json",
+          },
+        })
+      },
+    )
+
+    // Extract just the listings from the saved listings array
+    return savedListings.map((sl) => sl.listing).filter((listing) => listing != null)
+  },
 }

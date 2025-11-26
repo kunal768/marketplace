@@ -53,6 +53,11 @@ func Routes(h *Handlers, orchReqId string) *chi.Mux {
 		r.Post("/add-media-url/{id}", h.AddMediaURLHandler)
 		r.Patch("/{id}/media/{media_id}", h.UpdateMediaUrlHandler)
 		r.Delete("/{id}/media", h.DeleteMediaUrlHandler)
+		// Saved listings routes
+		r.Get("/saved", h.GetSavedListingsHandler)
+		r.Get("/save/{id}/check", h.IsListingSavedHandler)
+		r.Post("/save/{id}", h.SaveListingHandler)
+		r.Delete("/save/{id}", h.UnsaveListingHandler)
 	})
 
 	return r

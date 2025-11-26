@@ -7,6 +7,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- Drop tables in order of dependency
 DROP TABLE IF EXISTS flagged_listings;
 DROP TABLE IF EXISTS listing_media;
+DROP TABLE IF EXISTS saved_listings;
 DROP TABLE IF EXISTS user_login_auth;
 DROP TABLE IF EXISTS user_auth;
 DROP TABLE IF EXISTS listings;

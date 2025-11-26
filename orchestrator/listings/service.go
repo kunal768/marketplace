@@ -44,6 +44,10 @@ type Service interface {
 	FetchMediaURLs(ctx context.Context, listingID int64) (*FetchMediaURLsResponse, error)
 	UpdateMediaURL(ctx context.Context, req UpdateMediaURLRequest) (*UpdateMediaURLResponse, error)
 	DeleteMediaURL(ctx context.Context, req DeleteMediaURLRequest) (*DeleteMediaURLResponse, error)
+	SaveListing(ctx context.Context, req SaveListingRequest) (*SaveListingResponse, error)
+	UnsaveListing(ctx context.Context, req UnsaveListingRequest) (*UnsaveListingResponse, error)
+	IsListingSaved(ctx context.Context, listingID int64) (bool, error)
+	FetchSavedListings(ctx context.Context) (*FetchSavedListingsResponse, error)
 }
 
 func NewListingService(baseUrl string, sharedSecret string) Service {
@@ -946,4 +950,156 @@ func (s *svc) DeleteMediaURL(ctx context.Context, req DeleteMediaURLRequest) (*D
 	}
 
 	return &DeleteMediaURLResponse{Message: result.Message}, nil
+}
+
+func (s *svc) SaveListing(ctx context.Context, req SaveListingRequest) (*SaveListingResponse, error) {
+	// Extract and validate user authentication
+	userID, roleID, err := s.extractUserAndRole(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	fullURL := fmt.Sprintf("%s/listings/save/%d", s.config.URL, req.ListingID)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", fullURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("X-User-ID", userID)
+	httpReq.Header.Set("X-Role-ID", roleID)
+
+	resp, err := s.config.Client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("listing not found")
+		}
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &SaveListingResponse{Message: result.Message}, nil
+}
+
+func (s *svc) UnsaveListing(ctx context.Context, req UnsaveListingRequest) (*UnsaveListingResponse, error) {
+	// Extract and validate user authentication
+	userID, roleID, err := s.extractUserAndRole(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	fullURL := fmt.Sprintf("%s/listings/save/%d", s.config.URL, req.ListingID)
+	httpReq, err := http.NewRequestWithContext(ctx, "DELETE", fullURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("X-User-ID", userID)
+	httpReq.Header.Set("X-Role-ID", roleID)
+
+	resp, err := s.config.Client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("saved listing not found")
+		}
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &UnsaveListingResponse{Message: result.Message}, nil
+}
+
+func (s *svc) IsListingSaved(ctx context.Context, listingID int64) (bool, error) {
+	// Extract and validate user authentication
+	userID, roleID, err := s.extractUserAndRole(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	fullURL := fmt.Sprintf("%s/listings/save/%d/check", s.config.URL, listingID)
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", fullURL, nil)
+	if err != nil {
+		return false, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("X-User-ID", userID)
+	httpReq.Header.Set("X-Role-ID", roleID)
+
+	resp, err := s.config.Client.Do(httpReq)
+	if err != nil {
+		return false, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return false, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result struct {
+		IsSaved bool `json:"is_saved"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return false, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return result.IsSaved, nil
+}
+
+func (s *svc) FetchSavedListings(ctx context.Context) (*FetchSavedListingsResponse, error) {
+	// Extract and validate user authentication
+	userID, roleID, err := s.extractUserAndRole(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	fullURL := s.config.URL + "/listings/saved"
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", fullURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("X-User-ID", userID)
+	httpReq.Header.Set("X-Role-ID", roleID)
+
+	resp, err := s.config.Client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var savedListings []SavedListing
+	if err := json.NewDecoder(resp.Body).Decode(&savedListings); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &FetchSavedListingsResponse{SavedListings: savedListings}, nil
 }

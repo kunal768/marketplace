@@ -61,6 +61,7 @@ export default function ListingDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [isSaved, setIsSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [flagDialogOpen, setFlagDialogOpen] = useState(false)
   const [flagReason, setFlagReason] = useState<FlagReason | "">("")
   const [flagDetails, setFlagDetails] = useState("")
@@ -185,6 +186,26 @@ export default function ListingDetailPage() {
     }
 
     checkIfFlagged()
+  }, [isHydrated, isAuthenticated, token, refreshToken, listingId, user])
+
+  // Check if listing is saved
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !token || !refreshToken || !listingId || isNaN(listingId) || !user) {
+      return
+    }
+
+    const checkIfSaved = async () => {
+      try {
+        const saved = await orchestratorApi.isListingSaved(token, refreshToken, listingId)
+        setIsSaved(saved)
+      } catch (err) {
+        console.error("Error checking if listing is saved:", err)
+        // Don't show error to user, just assume not saved
+        setIsSaved(false)
+      }
+    }
+
+    checkIfSaved()
   }, [isHydrated, isAuthenticated, token, refreshToken, listingId, user])
 
   // Use actual media URLs or placeholder
@@ -604,12 +625,55 @@ export default function ListingDetailPage() {
                       <Button
                         variant="outline"
                         className="flex-1 h-12 magnetic-button bg-transparent"
-                        onClick={() => setIsSaved(!isSaved)}
+                        onClick={async () => {
+                          if (!token || !refreshToken || !listingId || saving) {
+                            return
+                          }
+
+                          try {
+                            setSaving(true)
+                            if (isSaved) {
+                              await orchestratorApi.unsaveListing(token, refreshToken, listingId)
+                              setIsSaved(false)
+                              toast({
+                                title: "Listing Unsaved",
+                                description: "The listing has been removed from your saved items.",
+                              })
+                            } else {
+                              await orchestratorApi.saveListing(token, refreshToken, listingId)
+                              setIsSaved(true)
+                              toast({
+                                title: "Listing Saved",
+                                description: "The listing has been saved to your favorites.",
+                              })
+                            }
+                          } catch (err) {
+                            console.error("Error saving/unsaving listing:", err)
+                            const errorMessage = err instanceof Error ? err.message : "Failed to save listing"
+                            toast({
+                              title: "Error",
+                              description: errorMessage,
+                              variant: "destructive",
+                            })
+                          } finally {
+                            setSaving(false)
+                          }
+                        }}
+                        disabled={saving}
                       >
-                        <Heart
-                          className={`mr-2 h-5 w-5 transition-all ${isSaved ? "fill-current text-red-500 scale-110" : ""}`}
-                        />
-                        {isSaved ? "Saved" : "Save"}
+                        {saving ? (
+                          <>
+                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                            {isSaved ? "Unsaving..." : "Saving..."}
+                          </>
+                        ) : (
+                          <>
+                            <Heart
+                              className={`mr-2 h-5 w-5 transition-all ${isSaved ? "fill-current text-red-500 scale-110" : ""}`}
+                            />
+                            {isSaved ? "Saved" : "Save"}
+                          </>
+                        )}
                       </Button>
                       <Button variant="outline" size="icon" className="h-12 w-12 magnetic-button bg-transparent">
                         <Share2 className="h-5 w-5" />

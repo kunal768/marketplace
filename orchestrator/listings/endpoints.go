@@ -866,6 +866,141 @@ func (e *Endpoints) DeleteFlagListingHandler(w http.ResponseWriter, r *http.Requ
 	httplib.WriteJSON(w, http.StatusOK, response)
 }
 
+// SaveListingHandler handles saving a listing for the authenticated user
+func (e *Endpoints) SaveListingHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract ID from URL path using PathValue (Go 1.22+)
+	listingIDStr := r.PathValue("id")
+	if listingIDStr == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Listing ID is required",
+		})
+		return
+	}
+
+	listingID, err := strconv.ParseInt(listingIDStr, 10, 64)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Invalid listing ID format",
+		})
+		return
+	}
+
+	req := SaveListingRequest{ListingID: listingID}
+
+	// Call service
+	response, err := e.service.SaveListing(r.Context(), req)
+	if err != nil {
+		if err.Error() == "listing not found" {
+			httplib.WriteJSON(w, http.StatusNotFound, ErrorResponse{
+				Error:   "Listing not found",
+				Message: err.Error(),
+			})
+			return
+		}
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to save listing",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	httplib.WriteJSON(w, http.StatusCreated, response)
+}
+
+// UnsaveListingHandler handles unsaving a listing for the authenticated user
+func (e *Endpoints) UnsaveListingHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract ID from URL path using PathValue (Go 1.22+)
+	listingIDStr := r.PathValue("id")
+	if listingIDStr == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Listing ID is required",
+		})
+		return
+	}
+
+	listingID, err := strconv.ParseInt(listingIDStr, 10, 64)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Invalid listing ID format",
+		})
+		return
+	}
+
+	req := UnsaveListingRequest{ListingID: listingID}
+
+	// Call service
+	response, err := e.service.UnsaveListing(r.Context(), req)
+	if err != nil {
+		if err.Error() == "saved listing not found" {
+			httplib.WriteJSON(w, http.StatusNotFound, ErrorResponse{
+				Error:   "Saved listing not found",
+				Message: err.Error(),
+			})
+			return
+		}
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to unsave listing",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, response)
+}
+
+// IsListingSavedHandler checks if a listing is saved by the current user
+func (e *Endpoints) IsListingSavedHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract ID from URL path using PathValue (Go 1.22+)
+	listingIDStr := r.PathValue("id")
+	if listingIDStr == "" {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Listing ID is required",
+		})
+		return
+	}
+
+	listingID, err := strconv.ParseInt(listingIDStr, 10, 64)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request",
+			Message: "Invalid listing ID format",
+		})
+		return
+	}
+
+	// Call service
+	isSaved, err := e.service.IsListingSaved(r.Context(), listingID)
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to check if listing is saved",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, map[string]bool{"is_saved": isSaved})
+}
+
+// GetSavedListingsHandler handles getting all saved listings for the authenticated user
+func (e *Endpoints) GetSavedListingsHandler(w http.ResponseWriter, r *http.Request) {
+	// Call service
+	response, err := e.service.FetchSavedListings(r.Context())
+	if err != nil {
+		httplib.WriteJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to fetch saved listings",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	httplib.WriteJSON(w, http.StatusOK, response.SavedListings)
+}
+
 // adminOnlyMiddleware checks if the user has admin role
 func adminOnlyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -927,6 +1062,10 @@ func (e *Endpoints) RegisterRoutes(mux *http.ServeMux, dbPool *pgxpool.Pool) {
 	mux.Handle("POST /api/listings/add-media-url/{id}", protected(http.HandlerFunc(e.AddMediaURLHandler)))
 	mux.Handle("GET /api/listings/flag/{id}/check", protected(http.HandlerFunc(e.HasUserFlaggedListingHandler)))
 	mux.Handle("POST /api/listings/flag/{id}", protected(http.HandlerFunc(e.FlagListingHandler)))
+	mux.Handle("GET /api/listings/saved", protected(http.HandlerFunc(e.GetSavedListingsHandler)))
+	mux.Handle("GET /api/listings/save/{id}/check", protected(http.HandlerFunc(e.IsListingSavedHandler)))
+	mux.Handle("POST /api/listings/save/{id}", protected(http.HandlerFunc(e.SaveListingHandler)))
+	mux.Handle("DELETE /api/listings/save/{id}", protected(http.HandlerFunc(e.UnsaveListingHandler)))
 	mux.Handle("PATCH /api/listings/update/{id}", protected(http.HandlerFunc(e.UpdateListingHandler)))
 	mux.Handle("DELETE /api/listings/delete/{id}", httplib.AuthMiddleWare(
 		httplib.RoleInjectionMiddleWare(dbPool)(http.HandlerFunc(e.DeleteListingHandler)),

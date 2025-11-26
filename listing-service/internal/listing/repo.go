@@ -731,3 +731,126 @@ func (s *Store) DeleteMediaUrl(ctx context.Context, listingID int64, userID stri
 
 	return nil
 }
+
+// SaveListing saves a listing for a user
+func (s *Store) SaveListing(ctx context.Context, userID string, listingID int64) error {
+	// Check if listing exists
+	var exists bool
+	err := s.P.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM listings WHERE id=$1)`, listingID).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("failed to check listing existence: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("listing not found")
+	}
+
+	// Insert into saved_listings (ignore duplicate errors - idempotent)
+	_, err = s.P.Exec(ctx, `
+		INSERT INTO saved_listings (user_id, listing_id)
+		VALUES ($1::uuid, $2)
+		ON CONFLICT (user_id, listing_id) DO NOTHING
+	`, userID, listingID)
+	if err != nil {
+		// Check for foreign key constraint violation
+		if pgErr, ok := err.(*pgconn.PgError); ok {
+			if pgErr.Code == "23503" { // foreign_key_violation
+				return fmt.Errorf("listing not found")
+			}
+		}
+		return fmt.Errorf("failed to save listing: %w", err)
+	}
+
+	return nil
+}
+
+// UnsaveListing removes a saved listing for a user
+func (s *Store) UnsaveListing(ctx context.Context, userID string, listingID int64) error {
+	result, err := s.P.Exec(ctx, `
+		DELETE FROM saved_listings
+		WHERE user_id=$1::uuid AND listing_id=$2
+	`, userID, listingID)
+	if err != nil {
+		return fmt.Errorf("failed to unsave listing: %w", err)
+	}
+
+	// Check if any rows were deleted
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("saved listing not found")
+	}
+
+	return nil
+}
+
+// IsListingSaved checks if a listing is saved by a user
+func (s *Store) IsListingSaved(ctx context.Context, userID string, listingID int64) (bool, error) {
+	var exists bool
+	err := s.P.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM saved_listings
+			WHERE user_id=$1::uuid AND listing_id=$2
+		)
+	`, userID, listingID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if listing is saved: %w", err)
+	}
+
+	return exists, nil
+}
+
+// GetSavedListings retrieves all saved listings for a user with listing details
+func (s *Store) GetSavedListings(ctx context.Context, userID string) ([]models.SavedListing, error) {
+	query := `
+		SELECT 
+			sl.id,
+			sl.user_id,
+			sl.listing_id,
+			sl.created_at,
+			l.id,
+			l.title,
+			l.description,
+			l.price,
+			l.category,
+			l.user_id,
+			l.status,
+			l.created_at
+		FROM saved_listings sl
+		JOIN listings l ON sl.listing_id = l.id
+		WHERE sl.user_id = $1::uuid
+		ORDER BY sl.created_at DESC
+	`
+
+	rows, err := s.P.Query(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query saved listings: %w", err)
+	}
+	defer rows.Close()
+
+	var savedListings []models.SavedListing
+	for rows.Next() {
+		var sl models.SavedListing
+		var listing models.Listing
+
+		err := rows.Scan(
+			&sl.ID,
+			&sl.UserID,
+			&sl.ListingID,
+			&sl.CreatedAt,
+			&listing.ID,
+			&listing.Title,
+			&listing.Description,
+			&listing.Price,
+			&listing.Category,
+			&listing.UserID,
+			&listing.Status,
+			&listing.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan saved listing: %w", err)
+		}
+
+		sl.Listing = listing
+		savedListings = append(savedListings, sl)
+	}
+
+	return savedListings, rows.Err()
+}

@@ -286,3 +286,44 @@ type DeleteMediaURLRequest struct {
 type DeleteMediaURLResponse struct {
 	Message string `json:"message"`
 }
+
+// SavedListing represents a saved listing entry
+type SavedListing struct {
+	ID        int64     `json:"id"`
+	UserID    uuid.UUID `json:"user_id"`
+	ListingID int64     `json:"listing_id"`
+	CreatedAt time.Time `json:"created_at"`
+	
+	// Listing information (populated when fetching saved listings)
+	Listing Listing `json:"listing,omitempty"`
+}
+
+// SaveListingRequest for saving a listing
+type SaveListingRequest struct {
+	ListingID int64 `json:"listing_id"`
+}
+
+// SaveListingResponse returns success message
+type SaveListingResponse struct {
+	Message string `json:"message"`
+}
+
+// UnsaveListingRequest for unsaving a listing
+type UnsaveListingRequest struct {
+	ListingID int64 `json:"listing_id"`
+}
+
+// UnsaveListingResponse returns success message
+type UnsaveListingResponse struct {
+	Message string `json:"message"`
+}
+
+// IsListingSavedResponse returns whether a listing is saved
+type IsListingSavedResponse struct {
+	IsSaved bool `json:"is_saved"`
+}
+
+// FetchSavedListingsResponse returns all saved listings for a user
+type FetchSavedListingsResponse struct {
+	SavedListings []SavedListing `json:"saved_listings"`
+}
