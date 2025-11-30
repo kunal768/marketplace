@@ -18,7 +18,7 @@ func MustPGPool(ctx context.Context) *pgxpool.Pool {
 	dbPassword := os.Getenv("DB_PASSWORD")
 	dbName := os.Getenv("DB_NAME")
 	dsn := fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		"postgres://%s:%s@%s:%s/%s?sslmode=require",
 		dbUser, dbPassword, dbHost, dbPort, dbName,
 	)
 
