@@ -1,45 +1,49 @@
 services:
-  db:
-    container_name: db
-    image: postgres:16
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
-    ports:
-      - "${DB_PORT}:${DB_PORT}"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
-  
-  db-seeder:
-    image: postgres:16
-    depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      - ./database:/seed
-    env_file:
-      - .env
-    command: >
-      bash -lc "
-        echo 'Waiting for Postgres: ';
-        echo $$DB_NAME;
-        until pg_isready -h $$DB_HOST -U $$DB_USER -d $$DB_NAME; do sleep 1; done;
-        export PGPASSWORD=\"$$DB_PASSWORD\";
-        echo 'Running SQL seed files...';
-        for f in ./seed/*.sql; do
-          echo 'Executing' $$f;
-          psql -h $$DB_HOST -U $$DB_USER -d $$DB_NAME -v ON_ERROR_STOP=1 -1 -f \"$$f\";
-        done;
-        echo 'All seed files executed successfully.';
-      "
+  # ------------------------------------------------------------------
+  # OPTIONAL: Local Postgres + seeder (NOT used when connecting to Neon)
+  # ------------------------------------------------------------------
+  # db:
+  #   container_name: db
+  #   image: postgres:16
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   environment:
+  #     POSTGRES_USER: ${DB_USER}
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD}
+  #     POSTGRES_DB: ${DB_NAME}
+  #   ports:
+  #     - "${DB_PORT}:${DB_PORT}"
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+  #     interval: 3s
+  #     timeout: 3s
+  #     retries: 20
+  # 
+  # db-seeder:
+  #   image: postgres:16
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #   volumes:
+  #     - ./database:/seed
+  #   env_file:
+  #     - .env
+  #   command: >
+  #     bash -lc "
+  #       echo 'Waiting for Postgres: ';
+  #       echo $$DB_NAME;
+  #       until pg_isready -h $$DB_HOST -U $$DB_USER -d $$DB_NAME; do sleep 1; done;
+  #       export PGPASSWORD=\"$$DB_PASSWORD\";
+  #       echo 'Running SQL seed files.';
+  #       for f in ./seed/*.sql; do
+  #         echo 'Executing' $$f;
+  #         psql -h $$DB_HOST -U $$DB_USER -d $$DB_NAME -v ON_ERROR_STOP=1 -1 -f \"$$f\";
+  #       done;
+  #       echo 'All seed files executed successfully.';
+  #     "
+
   mongo:
     image: mongo:7
     healthcheck:
@@ -47,6 +51,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
   rabbitmq:
     image: rabbitmq:3-management
     healthcheck:
@@ -54,6 +59,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "no"]
@@ -68,11 +74,13 @@ services:
     env_file:
       - ./.env
       - ./listing-service/.env
+    environment:
+      # This will come from your .env and should point to Neon
+      DATABASE_URL: ${DATABASE_URL}
     ports:
       - "${LISTING_PORT}:${LISTING_PORT}"
-    depends_on:
-      db-seeder:
-        condition: service_completed_successfully
+    # No longer depends on db-seeder / local Postgres
+
 
   orchestrator:
     build: 
@@ -85,14 +93,14 @@ services:
     ports:
       - "${ORCHESTRATOR_PORT}:${ORCHESTRATOR_PORT}"
     environment:
-      DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable
+      # Use a single DATABASE_URL from .env (Neon)
+      DATABASE_URL: ${DATABASE_URL}
     depends_on:
-      db-seeder:
-        condition: service_completed_successfully
       mongo:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+
 
   events-server:
     build:
@@ -118,7 +126,7 @@ services:
       timeout: 5s
       retries: 5
 
-  chat-consumer:                # 🆕 background worker
+  chat-consumer:                # background worker
     build:
       context: .
       dockerfile: ./chat-consumer/Dockerfile
@@ -149,3 +157,4 @@ services:
 
 volumes:
   pgdata:
+    # Only used if you uncomment the local db service

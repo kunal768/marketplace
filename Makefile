@@ -7,7 +7,7 @@ down:
 	docker compose down -v
 
 psql:
-	docker exec -it db psql -U postgres -d app
+	psql $(DATABASE_URL)
 
 redis:
 	docker compose exec redis redis-cli
